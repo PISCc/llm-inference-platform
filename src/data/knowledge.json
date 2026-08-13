@@ -1,0 +1,2301 @@
+{
+  "meta": {
+    "count": 80,
+    "categories": [
+      "01-推理系统",
+      "02-模型结构",
+      "03-Attention机制",
+      "04-生成流程",
+      "05-KV-Cache",
+      "06-缓存与请求优化",
+      "07-Attention架构",
+      "08-MoE基础",
+      "09-MoE路由与负载",
+      "10-MoE通信",
+      "11-模型压缩",
+      "12-模型适配与生成加速",
+      "13-多卡并行与GPU执行",
+      "14-硬件与评测",
+      "90-智能体知识库",
+      "总览"
+    ]
+  },
+  "entries": [
+    {
+      "id": "大模型推理知识库",
+      "title": "大模型推理知识库",
+      "category": "总览",
+      "day": null,
+      "dayLabel": "全部",
+      "summary": "大模型推理 14 天知识库总索引，面向 AI 讲解智能体。",
+      "definition": "",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "推理系统总览",
+        "Transformer Block",
+        "Attention 机制",
+        "KV Cache",
+        "MoE",
+        "量化",
+        "LoRA",
+        "Benchmark 体系"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/00-总览/首页.md",
+      "sections": {
+        "总览": "- [[推理系统总览]]：一次请求如何经过推理系统\n- [[性能指标]]：TTFT、TPOT、吞吐量、并发",
+        "01 推理系统": "- [[推理系统总览]] · [[API 与输入处理]] · [[Tokenizer]] · [[Scheduler]]\n- [[Batching 与 Continuous Batching]] · [[请求准入抢占重排与负载均衡]]",
+        "02 模型结构": "- [[Token 与 Token ID]] · [[Embedding 与位置信息]] · [[Transformer Block]]\n- [[Attention 与 FFN]] · [[残差连接与 LayerNorm]] · [[训练与推理]]",
+        "03 Attention 机制": "- [[Attention 机制]] · [[Q、K、V]] · [[关注分数与 Softmax]]\n- [[因果遮罩]] · [[多头 Attention]]",
+        "04 生成流程": "- [[自回归生成]] · [[输出概率与 Logits]] · [[Temperature 与采样]]\n- [[停止条件与流式输出]] · [[Prefill 与 Decode]] · [[PD 分离]]",
+        "05 KV Cache": "- [[KV Cache]] · [[Memory Manager]] · [[上下文与多轮对话]]",
+        "06 缓存与请求优化": "- [[PagedAttention]] · [[Block Table 与显存碎片]] · [[Prefix Cache]]\n- [[Hybrid KV Offload]] · [[Chunked Prefill]]",
+        "07 Attention 架构": "- [[MHA、MQA、GQA]] · [[MLA]] · [[FlashAttention]] · [[长上下文]]",
+        "08 MoE 基础": "- [[Dense Model]] · [[MoE]] · [[Expert]] · [[Router 与 Top-K Routing]]\n- [[Shared Expert 与专家粒度]]",
+        "09 MoE 路由与负载": "- [[Token Choice 与 Expert Choice]] · [[负载不均衡]] · [[负载均衡与 EPLB]] · [[Expert Parallel]]",
+        "10 MoE 通信": "- [[Dispatch 与 Combine]] · [[All-to-All 通信]] · [[NCCL]] · [[MoE 推理瓶颈与通信优化]]",
+        "11 模型压缩": "- [[数据格式与精度]] · [[量化]] · [[PTQ 与 QAT]] · [[GPTQ 与 AWQ]]\n- [[专家压缩]] · [[知识蒸馏]]",
+        "12 模型适配与生成加速": "- [[LoRA]] · [[MoE LoRA 与动态路由]] · [[Speculative Decoding]] · [[MTP]] · [[结构化输出]]",
+        "13 多卡并行与 GPU 执行": "- [[并行方式总览]] · [[TP、PP、DP]] · [[EP、CP、SP]]\n- [[Kernel 与 GEMM]] · [[CUDA Graph]] · [[GPU 利用率]]",
+        "14 硬件与评测": "- [[GPU 关键维度]] · [[显存与带宽]] · [[NVLink 与 PCIe]] · [[拓扑与网络]]\n- [[GPU 型号分类]] · [[Benchmark 体系]] · [[可观测性]] · [[专家观测体系]] · [[硬件配型建议]]",
+        "智能体辅助": "- [[智能体检索指南]] · [[FAQ 高频问答]] · [[智能体 Prompt 模板]]"
+      }
+    },
+    {
+      "id": "api-与输入处理",
+      "title": "API 与输入处理",
+      "category": "01-推理系统",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "用户与推理系统之间的接口，负责接收请求、校验参数并返回结果。",
+      "definition": "API Server 是用户与推理系统之间的接口，接收模型、温度、输出长度等参数，并把请求交给内部系统处理。",
+      "problem": "统一请求入口，完成参数校验、鉴权、模型选择和结果返回。",
+      "steps": [
+        "```text",
+        "接收请求 → 参数校验 → Tokenizer 转换 → 进入队列 → 返回结果",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "推理系统总览",
+        "Tokenizer",
+        "停止条件与流式输出"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/01-推理系统/API 与输入处理.md",
+      "sections": {
+        "一句话定义": "API Server 是用户与推理系统之间的接口，接收模型、温度、输出长度等参数，并把请求交给内部系统处理。",
+        "解决什么问题": "统一请求入口，完成参数校验、鉴权、模型选择和结果返回。",
+        "工作原理": "```text\n接收请求 → 参数校验 → Tokenizer 转换 → 进入队列 → 返回结果\n```",
+        "常见参数": "- model：指定模型\n- messages / prompt：输入内容\n- temperature：随机程度\n- max_tokens：最大输出长度\n- stream：是否流式输出",
+        "性能影响": "- 参数校验耗时影响端到端延迟的起点\n- max_tokens 与 temperature 直接影响成本与体验",
+        "与其他模块的关系": "- 输入下一步：[[Tokenizer]]\n- 输出环节：[[停止条件与流式输出]]",
+        "常见问题": "**Q：API 会直接执行模型计算吗？**\n**A：** 不会，它只负责接收和返回，真正计算由 Model Runner 与 GPU 完成。"
+      }
+    },
+    {
+      "id": "batching-与-continuous-batching",
+      "title": "Batching 与 Continuous Batching",
+      "category": "01-推理系统",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "把多个请求放在一起计算，提高 GPU 利用率；连续批处理允许动态补位。",
+      "definition": "Batching 把多个请求组成一批交给 GPU 并行计算；Continuous Batching 允许请求完成后立即补位，不必等待整批结束。",
+      "problem": "GPU 擅长并行计算相似任务；普通批处理会让短请求空等长请求，GPU 产生空闲。",
+      "steps": [
+        "```text",
+        "普通 Batching：凑齐一批 → 一起计算 → 整批结束",
+        "Continuous Batching：请求完成 → 释放位置 → 新请求立即补位",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Scheduler",
+        "GPU 利用率",
+        "Prefill 与 Decode"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/01-推理系统/Batching 与 Continuous Batching.md",
+      "sections": {
+        "一句话定义": "Batching 把多个请求组成一批交给 GPU 并行计算；Continuous Batching 允许请求完成后立即补位，不必等待整批结束。",
+        "解决什么问题": "GPU 擅长并行计算相似任务；普通批处理会让短请求空等长请求，GPU 产生空闲。",
+        "工作原理": "```text\n普通 Batching：凑齐一批 → 一起计算 → 整批结束\nContinuous Batching：请求完成 → 释放位置 → 新请求立即补位\n```",
+        "性能影响": "- Batch 大：吞吐高，但单请求延迟和显存压力上升\n- Continuous Batching：GPU 利用率与吞吐提升，调度复杂度上升",
+        "与其他模块的关系": "- 由 [[Scheduler]] 管理\n- 影响 [[GPU 利用率]] 和 [[Prefill 与 Decode]] 的调度",
+        "常见问题": "**Q：Batch 越大越好吗？**\n**A：** 不是。大 Batch 提高吞吐，但单请求更慢、显存占用更大。"
+      }
+    },
+    {
+      "id": "scheduler",
+      "title": "Scheduler",
+      "category": "01-推理系统",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "在有限资源下决定多个请求的执行顺序与资源分配。",
+      "definition": "Scheduler 在有限的 GPU、显存和计算资源下，决定多个请求的执行顺序和资源分配。",
+      "problem": "多个请求竞争有限资源，需要平衡延迟、吞吐、公平性和成本。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Batching 与 Continuous Batching",
+        "请求准入抢占重排与负载均衡",
+        "KV Cache"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/01-推理系统/Scheduler.md",
+      "sections": {
+        "一句话定义": "Scheduler 在有限的 GPU、显存和计算资源下，决定多个请求的执行顺序和资源分配。",
+        "解决什么问题": "多个请求竞争有限资源，需要平衡延迟、吞吐、公平性和成本。",
+        "管理内容": "```text\n谁先执行 → 谁继续 → 谁等待 → 谁可组批 → 谁已完成\n```",
+        "考虑因素": "- 请求顺序与优先级\n- 请求长度（输入/输出）\n- 当前显存\n- 公平性\n- Batch 组合",
+        "与其他模块的关系": "- 配合：[[Batching 与 Continuous Batching]]、[[Memory Manager]]\n- 上游：[[请求准入抢占重排与负载均衡]]",
+        "常见问题": "**Q：为什么请求要排队？**\n**A：** GPU、显存和计算单元有限，排队避免资源冲突和系统过载；显存不足也会导致排队。"
+      }
+    },
+    {
+      "id": "tokenizer",
+      "title": "Tokenizer",
+      "category": "01-推理系统",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "负责文字与 Token ID 之间双向转换。",
+      "definition": "Tokenizer 把人类文字切分成 Token，再转换成模型可处理的 Token ID；生成结束后再把 ID 转回文字。",
+      "problem": "模型只能处理数字，不能直接理解文字。",
+      "steps": [
+        "```text",
+        "输入：文字 → Token → Token ID",
+        "输出：Token ID → Token → 文字",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Token 与 Token ID",
+        "Embedding 与位置信息",
+        "API 与输入处理"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/01-推理系统/Tokenizer.md",
+      "sections": {
+        "一句话定义": "Tokenizer 把人类文字切分成 Token，再转换成模型可处理的 Token ID；生成结束后再把 ID 转回文字。",
+        "解决什么问题": "模型只能处理数字，不能直接理解文字。",
+        "工作原理": "```text\n输入：文字 → Token → Token ID\n输出：Token ID → Token → 文字\n```",
+        "关键点": "- Token 可能是汉字、词、词根、标点或代码片段\n- Token ID 只是编号，本身没有语义\n- Token 数量直接决定输入成本和上下文上限",
+        "与其他模块的关系": "- 下游：[[Embedding 与位置信息]]\n- 相关：[[Token 与 Token ID]]",
+        "常见问题": "**Q：Tokenizer 理解文字含义吗？**\n**A：** 不理解，它只做格式转换，语义由模型后续计算完成。"
+      }
+    },
+    {
+      "id": "性能指标",
+      "title": "性能指标",
+      "category": "01-推理系统",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "衡量推理系统延迟、吞吐、容量与稳定性的核心指标。",
+      "definition": "用于衡量推理系统延迟、吞吐、容量和稳定性的指标集合，是选型、监控和验收的基础。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Benchmark 体系",
+        "可观测性",
+        "Prefill 与 Decode"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/01-推理系统/性能指标.md",
+      "sections": {
+        "一句话定义": "用于衡量推理系统延迟、吞吐、容量和稳定性的指标集合，是选型、监控和验收的基础。",
+        "核心指标": "| 指标 | 含义 | 主要影响因素 |\n|---|---|---|\n| TTFT | 首 Token 延迟 | 排队、输入长度、Prefill |\n| TPOT | 每输出 Token 平均时间 | Decode、KV Cache、带宽、并发 |\n| 吞吐量 | 单位时间处理 Token 数 | Batch、GPU 利用率 |\n| 并发 | 同时未结束的请求数 | 显存、KV Cache 容量 |",
+        "尾延迟": "- P50：一半请求比它快\n- P95：95% 请求比它快，最慢 5% 更慢\n- P99：99% 请求比它快，最慢 1% 更慢\n\n平均值可能被快请求拉低，必须看 P95/P99。",
+        "与其他模块的关系": "- 评测：[[Benchmark 体系]]\n- 监控：[[可观测性]]\n- 对应阶段：[[Prefill 与 Decode]]",
+        "常见问题": "**Q：用户说“慢”，应该先看什么？**\n**A：** 先区分是首字慢（TTFT）还是生成慢（TPOT），再定位对应环节。"
+      }
+    },
+    {
+      "id": "推理系统总览",
+      "title": "推理系统总览",
+      "category": "01-推理系统",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "用户请求从进入推理系统到返回结果的全链路。",
+      "definition": "推理是训练好的模型根据用户输入计算并生成答案的过程；推理框架负责让这一过程高效运行。",
+      "problem": "模型本身只会预测下一个 Token，不会管理多个请求、GPU、显存和返回结果。推理框架把这些问题全部接管。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "API 与输入处理",
+        "Scheduler",
+        "Prefill 与 Decode",
+        "KV Cache"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/01-推理系统/推理系统总览.md",
+      "sections": {
+        "一句话定义": "推理是训练好的模型根据用户输入计算并生成答案的过程；推理框架负责让这一过程高效运行。",
+        "解决什么问题": "模型本身只会预测下一个 Token，不会管理多个请求、GPU、显存和返回结果。推理框架把这些问题全部接管。",
+        "完整请求链路": "```text\n用户请求 → API Server → Tokenizer → 请求队列 → Scheduler\n→ Batch / Continuous Batching → Prefill → KV Cache → Decode → 流式返回\n```",
+        "核心区分": "| 对比 | 模型 | 推理框架 |\n|---|---|---|\n| 负责 | 根据输入预测下一个 Token | 调度、显存、批处理、流式返回 |\n| 决定 | 能力与效果 | 速度、并发、成本、稳定性 |",
+        "性能影响": "- 模型决定效果上限；框架决定延迟、吞吐、成本\n- “模型慢”可能是排队、Prefill、Decode、显存或网络问题",
+        "与其他模块的关系": "- 上游：[[API 与输入处理]]\n- 核心调度：[[Scheduler]]、[[Batching 与 Continuous Batching]]\n- 生成阶段：[[Prefill 与 Decode]]\n- 显存核心：[[KV Cache]]",
+        "常见问题": "**Q：训练和推理有什么区别？**\n**A：** 训练调整参数学习能力，推理使用已训练参数生成回答，二者使用相同模型结构。"
+      }
+    },
+    {
+      "id": "请求准入抢占重排与负载均衡",
+      "title": "请求准入抢占重排与负载均衡",
+      "category": "01-推理系统",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "防止系统过载、保证优先级和资源均衡的四类请求管理机制。",
+      "definition": "准入控制决定请求能否进入；抢占暂停低优先级请求；重排调整处理顺序；负载均衡把请求分到空闲实例。",
+      "problem": "请求无限制进入会导致过载、延迟恶化、资源忙闲不均。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Scheduler",
+        "Memory Manager",
+        "Chunked Prefill"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/01-推理系统/请求准入抢占重排与负载均衡.md",
+      "sections": {
+        "一句话定义": "准入控制决定请求能否进入；抢占暂停低优先级请求；重排调整处理顺序；负载均衡把请求分到空闲实例。",
+        "解决什么问题": "请求无限制进入会导致过载、延迟恶化、资源忙闲不均。",
+        "各机制作用": "| 机制 | 作用 |\n|---|---|\n| 准入控制 | 资源不足时排队或拒绝 |\n| 抢占 | 高优先级先运行，KV Cache 通常保留 |\n| 重排 | 按优先级调整顺序 |\n| 负载均衡 | 分到空闲 GPU / 实例 |",
+        "与其他模块的关系": "- 与 [[Scheduler]] 共同决定请求何时运行\n- 与 [[Memory Manager]] 配合判断显存空间",
+        "常见问题": "**Q：请求被抢占后会从头计算吗？**\n**A：** 通常不会，已算出的 KV Cache 保留，恢复时从暂停位置继续。"
+      }
+    },
+    {
+      "id": "attention-与-ffn",
+      "title": "Attention 与 FFN",
+      "category": "02-模型结构",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "Attention 收集上下文关系，FFN 进一步加工每个 Token 的信息。",
+      "definition": "Attention 让 Token 互相参考、收集上下文关系；FFN 对每个 Token 的信息做进一步加工。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Attention 机制",
+        "Transformer Block",
+        "Q、K、V"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/02-模型结构/Attention 与 FFN.md",
+      "sections": {
+        "一句话定义": "Attention 让 Token 互相参考、收集上下文关系；FFN 对每个 Token 的信息做进一步加工。",
+        "为什么需要两者": "- Attention：谁应该关注谁，收集信息\n- FFN：如何加工信息，形成更抽象特征",
+        "工作顺序": "```text\n先 Attention（交流）→ 再 FFN（加工）\n```",
+        "性能影响": "- Attention 随上下文增长计算量大\n- FFN 是参数量大头（MoE 主要替换它）",
+        "与其他模块的关系": "- Attention 细节见 [[Attention 机制]]、[[Q、K、V]]\n- FFN 被 [[MoE]] 替换为多个专家",
+        "常见问题": "**Q：只有 Attention 没有 FFN 可以吗？**\n**A：** 不行，缺少信息加工能力，复杂任务处理会受限。"
+      }
+    },
+    {
+      "id": "embedding-与位置信息",
+      "title": "Embedding 与位置信息",
+      "category": "02-模型结构",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "把 Token ID 转成向量并加入顺序信息，是模型输入的基础。",
+      "definition": "Embedding 把 Token ID 转换成可参与计算的数字向量；位置信息告诉模型 Token 的先后顺序。",
+      "problem": "- 编号没有语义，需要转成特征向量\n- 相同 Token 在不同顺序下含义不同，需要位置信息",
+      "steps": [
+        "```text",
+        "Token ID → 查 Embedding 表 → 向量 → 加入位置信息 → 进入 Transformer",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Token 与 Token ID",
+        "Transformer Block",
+        "Attention 机制"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/02-模型结构/Embedding 与位置信息.md",
+      "sections": {
+        "一句话定义": "Embedding 把 Token ID 转换成可参与计算的数字向量；位置信息告诉模型 Token 的先后顺序。",
+        "解决什么问题": "- 编号没有语义，需要转成特征向量\n- 相同 Token 在不同顺序下含义不同，需要位置信息",
+        "工作原理": "```text\nToken ID → 查 Embedding 表 → 向量 → 加入位置信息 → 进入 Transformer\n```",
+        "关键点": "- Embedding 表是训练学出来的，不是人工规则\n- 位置信息与内容信息是两类不同信息\n- “小明打败小刚”与“小刚打败小明”靠位置区分",
+        "与其他模块的关系": "- 上游：[[Token 与 Token ID]]\n- 下游：[[Transformer Block]]",
+        "常见问题": "**Q：Embedding 向量每个数字代表什么？**\n**A：** 单独看很难解释，组合起来表达 Token 的语言特征。"
+      }
+    },
+    {
+      "id": "token-与-token-id",
+      "title": "Token 与 Token ID",
+      "category": "02-模型结构",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "文字切分的基本单位及其编号，编号本身没有语义。",
+      "definition": "Token 是模型处理文字的基本单位；Token ID 是每个 Token 对应的数字编号。",
+      "problem": "模型只能处理数字，需要把文字切分成可编号的单位。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Tokenizer",
+        "Embedding 与位置信息"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/02-模型结构/Token 与 Token ID.md",
+      "sections": {
+        "一句话定义": "Token 是模型处理文字的基本单位；Token ID 是每个 Token 对应的数字编号。",
+        "解决什么问题": "模型只能处理数字，需要把文字切分成可编号的单位。",
+        "关键点": "- Token 可能是汉字、词、词根、标点或代码片段\n- Token ID 只是编号，本身没有语义\n- 一个词可能被切成多个 Token",
+        "性能影响": "- Token 数量决定输入长度、上下文上限与成本\n- 长文本 → Prefill 更慢、KV Cache 更大",
+        "与其他模块的关系": "- 产生：[[Tokenizer]]\n- 下游：[[Embedding 与位置信息]]",
+        "常见问题": "**Q：Token ID 能直接表示词义吗？**\n**A：** 不能，词义由后续 Embedding 向量表达。"
+      }
+    },
+    {
+      "id": "transformer-block",
+      "title": "Transformer Block",
+      "category": "02-模型结构",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "模型的基本计算单元，由 Attention、FFN、残差连接与归一化组成。",
+      "definition": "Transformer Block 是模型的基本计算单元：Attention 收集关系，FFN 加工信息，残差保留原始信息，归一化稳定数值。",
+      "problem": "单层处理能力有限，需要多层叠加形成复杂理解。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Attention 与 FFN",
+        "残差连接与 LayerNorm",
+        "Attention 机制"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/02-模型结构/Transformer Block.md",
+      "sections": {
+        "一句话定义": "Transformer Block 是模型的基本计算单元：Attention 收集关系，FFN 加工信息，残差保留原始信息，归一化稳定数值。",
+        "解决什么问题": "单层处理能力有限，需要多层叠加形成复杂理解。",
+        "内部流程": "```text\n输入 → Attention → 残差连接 → LayerNorm → FFN → 残差连接 → LayerNorm → 下一层\n```",
+        "性能影响": "- 层数决定能力与计算量\n- 每层都需要 KV Cache（与 [[KV Cache]] 相关）",
+        "与其他模块的关系": "- 组成：[[Attention 与 FFN]]、[[残差连接与 LayerNorm]]\n- 多层叠加形成完整模型",
+        "常见问题": "**Q：为什么需要很多层？**\n**A：** 单层只能做有限加工，多层逐层形成从基础到抽象的理解。"
+      }
+    },
+    {
+      "id": "残差连接与-layernorm",
+      "title": "残差连接与 LayerNorm",
+      "category": "02-模型结构",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "残差保留原始信息，LayerNorm 稳定数值分布。",
+      "definition": "残差连接把原始输入与处理结果合并，保留原始信息；LayerNorm 把每层输出数值调整到稳定范围。",
+      "problem": "- 深层网络容易丢失原始信息\n- 数值波动过大会导致训练和推理不稳定",
+      "steps": [
+        "```text",
+        "残差：输出 = 原始输入 + 模块处理结果",
+        "LayerNorm：对向量分布做归一化",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Transformer Block",
+        "Attention 与 FFN"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/02-模型结构/残差连接与 LayerNorm.md",
+      "sections": {
+        "一句话定义": "残差连接把原始输入与处理结果合并，保留原始信息；LayerNorm 把每层输出数值调整到稳定范围。",
+        "解决什么问题": "- 深层网络容易丢失原始信息\n- 数值波动过大会导致训练和推理不稳定",
+        "工作原理": "```text\n残差：输出 = 原始输入 + 模块处理结果\nLayerNorm：对向量分布做归一化\n```",
+        "性能影响": "- 让模型可以堆得很深且稳定\n- 不直接决定答案，但影响训练与推理质量",
+        "与其他模块的关系": "- 位于 [[Transformer Block]] 内部",
+        "常见问题": "**Q：LayerNorm 会让所有数字一样吗？**\n**A：** 不会，它调整的是整体分布，不是抹平数值。"
+      }
+    },
+    {
+      "id": "训练与推理",
+      "title": "训练与推理",
+      "category": "02-模型结构",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "训练学习参数，推理使用参数；二者结构相同但目标不同。",
+      "definition": "训练通过预测与正确答案比较来调整参数；推理使用训练好的参数生成回答。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Transformer Block",
+        "推理系统总览"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/02-模型结构/训练与推理.md",
+      "sections": {
+        "一句话定义": "训练通过预测与正确答案比较来调整参数；推理使用训练好的参数生成回答。",
+        "区别": "| 对比 | 训练 | 推理 |\n|---|---|---|\n| 目标 | 学习语言规律 | 使用已有能力 |\n| 参数 | 不断调整 | 通常固定 |\n| 数据 | 大量训练文本 | 当前用户输入 |\n| 计算量 | 非常大 | 相对较小 |",
+        "共同点": "- 使用相同模型结构\n- 都经过 Attention、FFN、Transformer Block\n- 都消耗 GPU 计算",
+        "与其他模块的关系": "- 推理过程：[[推理系统总览]]",
+        "常见问题": "**Q：推理时会修改模型参数吗？**\n**A：** 通常不会，参数保持不变，只有 KV Cache 等运行时状态变化。"
+      }
+    },
+    {
+      "id": "attention-机制",
+      "title": "Attention 机制",
+      "category": "03-Attention机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "让 Token 根据语境互相参考，动态更新表示。",
+      "definition": "Attention 让每个 Token 参考上下文中的其他 Token，根据当前语境更新自己的向量表示。",
+      "problem": "同一个词在不同句子中含义不同（如“苹果”），仅靠 Embedding 无法区分。",
+      "steps": [
+        "```text",
+        "Q 查询 → K 匹配 → 关注分数 → Softmax 权重 → 加权 V → 新表示",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Q、K、V",
+        "关注分数与 Softmax",
+        "因果遮罩",
+        "多头 Attention"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/03-Attention机制/Attention 机制.md",
+      "sections": {
+        "一句话定义": "Attention 让每个 Token 参考上下文中的其他 Token，根据当前语境更新自己的向量表示。",
+        "解决什么问题": "同一个词在不同句子中含义不同（如“苹果”），仅靠 Embedding 无法区分。",
+        "工作原理": "```text\nQ 查询 → K 匹配 → 关注分数 → Softmax 权重 → 加权 V → 新表示\n```",
+        "关键点": "- 不是平均关注所有 Token，而是按相关程度分配权重\n- 同一个 Token 在不同句子中关注对象不同\n- 输出是向量，不是直接的中文解释",
+        "性能影响": "- 提升理解能力，但增加计算量与显存\n- 关系数量随 Token 平方增长",
+        "与其他模块的关系": "- 机制细节：[[Q、K、V]]、[[关注分数与 Softmax]]\n- 约束：[[因果遮罩]]\n- 扩展：[[多头 Attention]]",
+        "常见问题": "**Q：Attention 能保证指代判断正确吗？**\n**A：** 不能保证，只根据上下文计算相关性，信息不足时可能出错。"
+      }
+    },
+    {
+      "id": "qkv",
+      "title": "Q、K、V",
+      "category": "03-Attention机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "Q 查询、K 匹配、V 提供信息，是 Attention 的三个角色。",
+      "definition": "Q（Query）表示当前 Token 想找什么；K（Key）提供匹配线索；V（Value）提供实际信息。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Attention 机制",
+        "关注分数与 Softmax",
+        "KV Cache"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/03-Attention机制/Q、K、V.md",
+      "sections": {
+        "一句话定义": "Q（Query）表示当前 Token 想找什么；K（Key）提供匹配线索；V（Value）提供实际信息。",
+        "分工": "```text\nQ：我想寻找什么\nK：我是否和需求匹配\nV：如果匹配，我提供什么信息\n```",
+        "来源": "```text\nToken 向量 × 训练好的参数（Wq/Wk/Wv）→ Q、K、V\n```\n\n不是随机生成，每个 Transformer Block 有自己的参数。",
+        "性能影响": "- KV Cache 保存历史 K、V，不保存 Q\n- KV 头数量决定 KV Cache 大小（见 [[MHA、MQA、GQA]]）",
+        "与其他模块的关系": "- 机制：[[Attention 机制]]\n- 缓存：[[KV Cache]]",
+        "常见问题": "**Q：为什么缓存 K、V 而不缓存 Q？**\n**A：** 历史 Q 已完成查询任务，未来 Token 只需要历史 K 匹配、V 取信息。"
+      }
+    },
+    {
+      "id": "关注分数与-softmax",
+      "title": "关注分数与 Softmax",
+      "category": "03-Attention机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "Q 与 K 比较得到分数，Softmax 把分数转成权重。",
+      "definition": "Q 与 K 点积得到关注分数；Softmax 把分数转换成总和为 1 的关注权重，再按权重汇总 V。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "分数 → exp → 除以总和 → 权重 → 加权 V → 新表示",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Q、K、V",
+        "Attention 机制"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/03-Attention机制/关注分数与 Softmax.md",
+      "sections": {
+        "一句话定义": "Q 与 K 点积得到关注分数；Softmax 把分数转换成总和为 1 的关注权重，再按权重汇总 V。",
+        "为什么需要 Softmax": "- 原始分数可能是负数、总和不等于 1\n- Softmax：转正数、保序、放大差异、归一化",
+        "工作原理": "```text\n分数 → exp → 除以总和 → 权重 → 加权 V → 新表示\n```",
+        "关键点": "- 权重通常为正且和为 1\n- exp 会放大高分与低分的差距，突出重点",
+        "与其他模块的关系": "- 上游：[[Q、K、V]]\n- 属于：[[Attention 机制]]",
+        "常见问题": "**Q：为什么用 exp 而不是平方？**\n**A：** exp 保持正负大小关系且可微；平方会丢失正负号差异。"
+      }
+    },
+    {
+      "id": "因果遮罩",
+      "title": "因果遮罩",
+      "category": "03-Attention机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "禁止当前 Token 关注未来 Token，保证训练与生成一致。",
+      "definition": "因果遮罩规定当前位置只能关注自己和之前的 Token，不能看到未来 Token。",
+      "problem": "生成是逐 Token 的，训练时必须模拟真实生成，避免模型偷看“答案”。",
+      "steps": [
+        "```text",
+        "在 Softmax 前把未来位置设为不可关注（权重为 0）",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Attention 机制",
+        "自回归生成"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/03-Attention机制/因果遮罩.md",
+      "sections": {
+        "一句话定义": "因果遮罩规定当前位置只能关注自己和之前的 Token，不能看到未来 Token。",
+        "解决什么问题": "生成是逐 Token 的，训练时必须模拟真实生成，避免模型偷看“答案”。",
+        "工作原理": "```text\n在 Softmax 前把未来位置设为不可关注（权重为 0）\n```",
+        "关键点": "- 关系是有方向的：“足球”可以关注“踢”，“踢”不能提前看“足球”\n- 训练与推理使用相同的遮罩规则",
+        "与其他模块的关系": "- 属于 [[Attention 机制]]\n- 与 [[自回归生成]] 配套",
+        "常见问题": "**Q：这样会不会弱化“踢”和“足球”的关系？**\n**A：** 不会，“足球”关注“踢”已经足够让模型学到“踢足球”的搭配。"
+      }
+    },
+    {
+      "id": "多头-attention",
+      "title": "多头 Attention",
+      "category": "03-Attention机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "用多组 QKV 从不同角度提取 Token 之间的关系。",
+      "definition": "多头 Attention 使用多组独立的 Q、K、V 参数并行计算，从不同表示空间提取关系，最后拼接整合。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "多个头各自计算 Attention → 拼接 → 输出变换",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Attention 机制",
+        "MHA、MQA、GQA"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/03-Attention机制/多头 Attention.md",
+      "sections": {
+        "一句话定义": "多头 Attention 使用多组独立的 Q、K、V 参数并行计算，从不同表示空间提取关系，最后拼接整合。",
+        "为什么需要多头": "同一句话可能同时包含主谓、动宾、时间、地点等多种关系，单头表达力有限。",
+        "工作原理": "```text\n多个头各自计算 Attention → 拼接 → 输出变换\n```",
+        "关键点": "- 每个头有自己的 Q、K、V 参数\n- 不能简单认为某个头永远只负责某一种关系",
+        "与其他模块的关系": "- 架构变体：[[MHA、MQA、GQA]]（共享 KV 的优化）",
+        "常见问题": "**Q：多头是复制多个完整模型吗？**\n**A：** 不是，只是把 Attention 表示空间拆成多个部分并行处理。"
+      }
+    },
+    {
+      "id": "pd-分离",
+      "title": "PD 分离",
+      "category": "04-生成流程",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "把 Prefill 与 Decode 拆到不同资源集群，分别优化。",
+      "definition": "PD 分离把输入处理（Prefill）与输出生成（Decode）拆到不同的计算资源上。",
+      "problem": "两类请求计算特点不同，混跑会互相干扰，TTFT 与 TPOT 都不稳定。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Prefill 与 Decode",
+        "Chunked Prefill"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/04-生成流程/PD 分离.md",
+      "sections": {
+        "一句话定义": "PD 分离把输入处理（Prefill）与输出生成（Decode）拆到不同的计算资源上。",
+        "解决什么问题": "两类请求计算特点不同，混跑会互相干扰，TTFT 与 TPOT 都不稳定。",
+        "优点与代价": "- 优点：两类请求可分别优化与扩容\n- 代价：架构更复杂，中间状态需跨集群传输",
+        "与其他模块的关系": "- 基于：[[Prefill 与 Decode]]\n- 替代方案：[[Chunked Prefill]]",
+        "常见问题": "**Q：什么场景适合 PD 分离？**\n**A：** 输入输出长度差异大、高并发、对延迟稳定性要求高的服务。"
+      }
+    },
+    {
+      "id": "prefill-与-decode",
+      "title": "Prefill 与 Decode",
+      "category": "04-生成流程",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "Prefill 处理整段输入，Decode 逐 Token 生成输出。",
+      "definition": "Prefill 一次处理全部 Prompt Token；Decode 逐 Token 生成输出。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "KV Cache",
+        "PD 分离",
+        "性能指标"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/04-生成流程/Prefill 与 Decode.md",
+      "sections": {
+        "一句话定义": "Prefill 一次处理全部 Prompt Token；Decode 逐 Token 生成输出。",
+        "区别": "| 对比 | Prefill | Decode |\n|---|---|---|\n| 处理对象 | 全部 Prompt | 每轮一个新 Token |\n| 计算特点 | 计算密集、可并行 | 带宽敏感、必须串行 |\n| 主要指标 | TTFT | TPOT |\n| 缓存 | 建立初始 KV Cache | 读取并追加缓存 |",
+        "与其他模块的关系": "- 缓存：[[KV Cache]]\n- 部署优化：[[PD 分离]]、[[Chunked Prefill]]",
+        "常见问题": "**Q：输入很长和输出很长，瓶颈分别在哪？**\n**A：** 输入长主要影响 Prefill/TTFT；输出长主要影响 Decode/TPOT。"
+      }
+    },
+    {
+      "id": "temperature-与采样",
+      "title": "Temperature 与采样",
+      "category": "04-生成流程",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "控制生成随机程度与候选范围的三类参数。",
+      "definition": "Temperature 调整概率分布集中程度；Top-K 限制候选数量；Top-P 按累计概率筛选候选。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "输出概率与 Logits",
+        "自回归生成"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/04-生成流程/Temperature 与采样.md",
+      "sections": {
+        "一句话定义": "Temperature 调整概率分布集中程度；Top-K 限制候选数量；Top-P 按累计概率筛选候选。",
+        "三者区别": "| 参数 | 控制 | 效果 |\n|---|---|---|\n| Temperature | 分布集中/平坦 | 低=稳定，高=多样 |\n| Top-K | 保留最高 K 个候选 | 排除低概率 Token |\n| Top-P | 保留累计概率到 P 的候选 | 候选数量动态 |",
+        "重要误区": "- 高 Temperature ≠ 更聪明，只改变随机性\n- 低 Temperature 不保证正确，只是更倾向模型原判",
+        "与其他模块的关系": "- 上游：[[输出概率与 Logits]]",
+        "常见问题": "**Q：提高 Temperature 能解决知识错误吗？**\n**A：** 不能，反而可能让低概率错误 Token 更容易被选中。"
+      }
+    },
+    {
+      "id": "停止条件与流式输出",
+      "title": "停止条件与流式输出",
+      "category": "04-生成流程",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "决定生成何时结束，以及如何把结果逐步返回给用户。",
+      "definition": "停止条件决定生成何时结束；流式输出把已生成的 Token 分批发送给用户。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "自回归生成",
+        "API 与输入处理"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/04-生成流程/停止条件与流式输出.md",
+      "sections": {
+        "一句话定义": "停止条件决定生成何时结束；流式输出把已生成的 Token 分批发送给用户。",
+        "停止方式": "```text\n结束 Token / 最大输出长度 / 停止字符串 / 用户取消 / 超时\n```",
+        "流式输出": "- 生成一部分就发送一部分\n- 改善感知延迟，不减少总计算量\n- 底层仍是逐 Token 生成，发送粒度可能不同",
+        "与其他模块的关系": "- 生成过程：[[自回归生成]]\n- 入口：[[API 与输入处理]]",
+        "常见问题": "**Q：流式输出会加速模型计算吗？**\n**A：** 不会，它主要改善用户感知的等待时间。"
+      }
+    },
+    {
+      "id": "自回归生成",
+      "title": "自回归生成",
+      "category": "04-生成流程",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "根据已有上下文逐 Token 预测下一个 Token，直到停止。",
+      "definition": "自回归生成是模型根据已有上下文，一次预测一个 Token，把结果加入上下文后继续预测，直到停止。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "上下文 → 预测下一个 Token → 加入上下文 → 重复 → 直到停止",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "输出概率与 Logits",
+        "因果遮罩",
+        "停止条件与流式输出"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/04-生成流程/自回归生成.md",
+      "sections": {
+        "一句话定义": "自回归生成是模型根据已有上下文，一次预测一个 Token，把结果加入上下文后继续预测，直到停止。",
+        "为什么必须逐 Token": "后面的 Token 依赖前面的生成结果，未来内容不存在，无法提前参考。",
+        "工作原理": "```text\n上下文 → 预测下一个 Token → 加入上下文 → 重复 → 直到停止\n```",
+        "性能影响": "- 输出越长，生成轮数越多，总延迟越高\n- 训练时可并行（答案已知），推理时必须串行",
+        "与其他模块的关系": "- 依赖 [[因果遮罩]]\n- 停止与返回：[[停止条件与流式输出]]",
+        "常见问题": "**Q：为什么不能一次生成整段话？**\n**A：** 后续内容依赖已生成内容，只能逐步确定。"
+      }
+    },
+    {
+      "id": "输出概率与-logits",
+      "title": "输出概率与 Logits",
+      "category": "04-生成流程",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "模型输出候选 Token 的原始分数，经 Softmax 转成概率。",
+      "definition": "模型每轮输出所有候选 Token 的原始分数（Logits），经 Softmax 转换成概率分布，再选择下一个 Token。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "Logits → Softmax → 概率分布 → 选择 Token",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Temperature 与采样",
+        "自回归生成"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/04-生成流程/输出概率与 Logits.md",
+      "sections": {
+        "一句话定义": "模型每轮输出所有候选 Token 的原始分数（Logits），经 Softmax 转换成概率分布，再选择下一个 Token。",
+        "关键点": "- Logits 可能是负数，总和不等于 1\n- 概率分布通常总和为 1\n- 选择方式：最高概率或按概率采样",
+        "工作原理": "```text\nLogits → Softmax → 概率分布 → 选择 Token\n```",
+        "与其他模块的关系": "- 选择策略：[[Temperature 与采样]]\n- 生成循环：[[自回归生成]]",
+        "常见问题": "**Q：Logits 越大一定越准吗？**\n**A：** Logits 高代表模型更偏好该 Token，不保证事实正确。"
+      }
+    },
+    {
+      "id": "kv-cache",
+      "title": "KV Cache",
+      "category": "05-KV-Cache",
+      "day": 5,
+      "dayLabel": "第 5 天",
+      "summary": "保存历史 Token 的 K、V，避免 Decode 重复计算前文。",
+      "definition": "KV Cache 保存历史 Token 在每层 Attention 中的 K、V，让 Decode 复用而不是重复计算前文。",
+      "problem": "没有缓存时，每生成一个 Token 都要重新计算全部历史 K、V。",
+      "steps": [
+        "```text",
+        "Prefill 写入初始缓存 → 新 Q 匹配历史 K → 读取历史 V → 新 K、V 追加",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Memory Manager",
+        "PagedAttention",
+        "Prefix Cache",
+        "MHA、MQA、GQA"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/05-KV-Cache/KV Cache.md",
+      "sections": {
+        "一句话定义": "KV Cache 保存历史 Token 在每层 Attention 中的 K、V，让 Decode 复用而不是重复计算前文。",
+        "解决什么问题": "没有缓存时，每生成一个 Token 都要重新计算全部历史 K、V。",
+        "工作原理": "```text\nPrefill 写入初始缓存 → 新 Q 匹配历史 K → 读取历史 V → 新 K、V 追加\n```",
+        "为什么占显存": "```text\nKV Cache ≈ 层数 × Token 数 × KV 头 × 维度 × 2（K+V）× 精度 × 并发\n```",
+        "关键点": "- 不保存历史 Q\n- 每层、每请求独立缓存\n- 请求结束通常释放",
+        "与其他模块的关系": "- 管理：[[Memory Manager]]\n- 优化：[[PagedAttention]]、[[Prefix Cache]]、[[MHA、MQA、GQA]]、[[MLA]]",
+        "常见问题": "**Q：KV Cache 会跨请求自动保存吗？**\n**A：** 通常不会，请求结束就释放，除非实现 Prefix Cache 等机制。"
+      }
+    },
+    {
+      "id": "memory-manager",
+      "title": "Memory Manager",
+      "category": "05-KV-Cache",
+      "day": 5,
+      "dayLabel": "第 5 天",
+      "summary": "负责 KV Cache 的创建、增长、释放与显存分配。",
+      "definition": "Memory Manager（显存管理器）负责 KV Cache 的分配、扩展与回收，并维护显存状态。",
+      "problem": "缓存随 Decode 持续增长，请求频繁进出，显存需要有序管理。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "KV Cache",
+        "PagedAttention",
+        "Scheduler"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/05-KV-Cache/Memory Manager.md",
+      "sections": {
+        "一句话定义": "Memory Manager（显存管理器）负责 KV Cache 的分配、扩展与回收，并维护显存状态。",
+        "解决什么问题": "缓存随 Decode 持续增长，请求频繁进出，显存需要有序管理。",
+        "生命周期": "```text\n请求进入分配 → Prefill 写入 → Decode 扩展 → 请求结束释放 → Block 回收\n```",
+        "与 Scheduler 的关系": "```text\nScheduler：决定请求能否运行\nMemory Manager：决定有无显存空间运行\n```",
+        "与其他模块的关系": "- 管理对象：[[KV Cache]]\n- 分配方式：[[PagedAttention]]",
+        "常见问题": "**Q：显存不足导致排队，问题出在哪？**\n**A：** 表面是调度排队，实际是显存容量不足。"
+      }
+    },
+    {
+      "id": "上下文与多轮对话",
+      "title": "上下文与多轮对话",
+      "category": "05-KV-Cache",
+      "day": 5,
+      "dayLabel": "第 5 天",
+      "summary": "上下文包含输入、历史与已生成内容，长度决定成本与缓存。",
+      "definition": "上下文是模型当前能看到的所有 Token，包括系统提示词、历史对话、当前输入与已生成内容。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "KV Cache",
+        "长上下文"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/05-KV-Cache/上下文与多轮对话.md",
+      "sections": {
+        "一句话定义": "上下文是模型当前能看到的所有 Token，包括系统提示词、历史对话、当前输入与已生成内容。",
+        "为什么多轮对话越来越慢": "```text\n历史消息增加 → 输入 Token 增加 → Prefill 变慢 → KV Cache 变大 → 成本上升\n```",
+        "产品控制手段": "- 限制历史长度\n- 对历史做摘要\n- 按问题筛选相关历史\n- 复用公共前缀（[[Prefix Cache]]）",
+        "与其他模块的关系": "- 成本来源：[[KV Cache]]\n- 优化：[[长上下文]]",
+        "常见问题": "**Q：支持 128K 上下文等于高效使用吗？**\n**A：** 不等于，还要看延迟、显存、成本和信息利用率。"
+      }
+    },
+    {
+      "id": "block-table-与显存碎片",
+      "title": "Block Table 与显存碎片",
+      "category": "06-缓存与请求优化",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "记录逻辑 Block 到物理 Block 的映射，区分两类碎片。",
+      "definition": "Block Table 是请求的逻辑 Block 到物理 Block 的映射表；显存碎片分内部碎片与外部碎片。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "PagedAttention",
+        "KV Cache"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/06-缓存与请求优化/Block Table 与显存碎片.md",
+      "sections": {
+        "一句话定义": "Block Table 是请求的逻辑 Block 到物理 Block 的映射表；显存碎片分内部碎片与外部碎片。",
+        "Block Table": "```text\n逻辑 Block 0 → 物理 Block 7\n逻辑 Block 1 → 物理 Block 2\n```\n\n每个请求维护自己的映射表，逻辑编号相同也不会串数据。",
+        "两类碎片": "| 类型 | 定义 | PagedAttention 的作用 |\n|---|---|---|\n| 内部碎片 | Block 已分配但未填满 | 少量保留 |\n| 外部碎片 | 空闲空间分散，缺连续区域 | 基本消除 |",
+        "与其他模块的关系": "- 属于 [[PagedAttention]] 的核心机制",
+        "常见问题": "**Q：逻辑位置和物理位置为什么不同？**\n**A：** Token 逻辑上连续，但 K、V 可以存在显存不同位置，靠映射表访问。"
+      }
+    },
+    {
+      "id": "chunked-prefill",
+      "title": "Chunked Prefill",
+      "category": "06-缓存与请求优化",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "把长 Prefill 切块，穿插在 Decode 之间执行。",
+      "definition": "Chunked Prefill 把长 Prompt 的 Prefill 切成多个 Chunk，穿插在 Decode 请求之间执行。",
+      "problem": "长 Prefill 一次占满 GPU，导致 Decode 请求长时间停顿。",
+      "steps": [
+        "```text",
+        "Prefill Chunk 1 → 穿插 Decode → Prefill Chunk 2 → 继续",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Prefill 与 Decode",
+        "PD 分离",
+        "Scheduler"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/06-缓存与请求优化/Chunked Prefill.md",
+      "sections": {
+        "一句话定义": "Chunked Prefill 把长 Prompt 的 Prefill 切成多个 Chunk，穿插在 Decode 请求之间执行。",
+        "解决什么问题": "长 Prefill 一次占满 GPU，导致 Decode 请求长时间停顿。",
+        "工作原理": "```text\nPrefill Chunk 1 → 穿插 Decode → Prefill Chunk 2 → 继续\n```",
+        "收益与代价": "- 收益：整体吞吐提升、Decode 等待减少\n- 代价：单请求 TTFT 可能上升",
+        "与其他模块的关系": "- 相关：[[Prefill 与 Decode]]、[[PD 分离]]",
+        "常见问题": "**Q：Chunked Prefill 让单个长请求更快吗？**\n**A：** 通常不会，它牺牲少量单请求速度换取整体并发稳定。"
+      }
+    },
+    {
+      "id": "hybrid-kv-offload",
+      "title": "Hybrid KV Offload",
+      "category": "06-缓存与请求优化",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "把低频 KV Cache 搬到 CPU/SSD，扩展显存容量。",
+      "definition": "Hybrid KV Offload 按访问频率分级存放 KV Cache：热数据留 GPU，冷数据搬到 CPU 内存或 SSD。",
+      "problem": "KV Cache 超出 GPU 显存时，用其他存储扩展容量。",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "KV Cache",
+        "Memory Manager"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/06-缓存与请求优化/Hybrid KV Offload.md",
+      "sections": {
+        "一句话定义": "Hybrid KV Offload 按访问频率分级存放 KV Cache：热数据留 GPU，冷数据搬到 CPU 内存或 SSD。",
+        "解决什么问题": "KV Cache 超出 GPU 显存时，用其他存储扩展容量。",
+        "存放策略": "```text\n最近/高频 → 留在 GPU\n较早/低频 → 搬到 CPU/SSD\n需要时 → 搬回 GPU\n```",
+        "收益与代价": "- 收益：容量扩大、并发提高\n- 代价：数据搬移增加延迟",
+        "与其他模块的关系": "- 管理：[[Memory Manager]]\n- 组合：与 [[量化]]、[[PagedAttention]] 互补",
+        "常见问题": "**Q：Offload 和量化是同一类优化吗？**\n**A：** 不同。量化让每个数字更小；Offload 把数据放到更远的存储。"
+      }
+    },
+    {
+      "id": "pagedattention",
+      "title": "PagedAttention",
+      "category": "06-缓存与请求优化",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "把 KV Cache 切成固定 Block，通过映射管理显存，减少碎片。",
+      "definition": "PagedAttention 把 KV Cache 切成固定大小的 Block，通过 Block Table 映射逻辑位置到物理位置，减少显存碎片。",
+      "problem": "连续分配产生显存碎片、预分配浪费和扩容搬迁。",
+      "steps": [
+        "```text",
+        "逻辑 Block → 映射 → 物理 Block → 按需分配/回收",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Block Table 与显存碎片",
+        "KV Cache",
+        "Memory Manager"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/06-缓存与请求优化/PagedAttention.md",
+      "sections": {
+        "一句话定义": "PagedAttention 把 KV Cache 切成固定大小的 Block，通过 Block Table 映射逻辑位置到物理位置，减少显存碎片。",
+        "解决什么问题": "连续分配产生显存碎片、预分配浪费和扩容搬迁。",
+        "工作原理": "```text\n逻辑 Block → 映射 → 物理 Block → 按需分配/回收\n```",
+        "收益与代价": "- 收益：显存利用率高、并发提高、碎片减少\n- 代价：Block 管理开销、少量内部碎片",
+        "与其他模块的关系": "- 管理：[[Memory Manager]]\n- 映射：[[Block Table 与显存碎片]]",
+        "常见问题": "**Q：PagedAttention 降低计算量吗？**\n**A：** 不，它优化显存管理，不改变 Attention 的数学计算。"
+      }
+    },
+    {
+      "id": "prefix-cache",
+      "title": "Prefix Cache",
+      "category": "06-缓存与请求优化",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "复用相同前缀的 KV 块，跳过重复的 Prefill 计算。",
+      "definition": "Prefix Cache 把相同前缀（如系统提示词）的 K、V 缓存起来，供后续请求复用，跳过重复 Prefill。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "KV Cache",
+        "PagedAttention"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/06-缓存与请求优化/Prefix Cache.md",
+      "sections": {
+        "一句话定义": "Prefix Cache 把相同前缀（如系统提示词）的 K、V 缓存起来，供后续请求复用，跳过重复 Prefill。",
+        "复用条件": "```text\n同模型 + 同参数 + Token 前缀逐字一致\n```",
+        "收益公式": "```text\n命中收益 = 公共前缀长度 × 命中次数\n```",
+        "关键细节": "- 按 Block 粒度 Hash 匹配\n- 多一个空格、标点都会中断匹配\n- 需要缓存淘汰策略",
+        "与其他模块的关系": "- 存储基础：[[KV Cache]]、[[PagedAttention]]",
+        "常见问题": "**Q：什么场景收益最大？**\n**A：** 固定系统提示词、相同文档反复问答、不变历史前缀。"
+      }
+    },
+    {
+      "id": "flashattention",
+      "title": "FlashAttention",
+      "category": "07-Attention架构",
+      "day": 7,
+      "dayLabel": "第 7 天",
+      "summary": "分块计算减少显存访问，不改变 Attention 结果。",
+      "definition": "FlashAttention 通过分块计算与在线更新，减少 Attention 的显存访问量，不改变数学结果。",
+      "problem": "Attention 中间矩阵随 Token 平方增长，传统实现反复读写显存成为瓶颈。",
+      "steps": [
+        "```text",
+        "QKV 分块 → 分批计算 → 在线更新 → 不存完整大矩阵",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Attention 机制",
+        "长上下文"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/07-Attention架构/FlashAttention.md",
+      "sections": {
+        "一句话定义": "FlashAttention 通过分块计算与在线更新，减少 Attention 的显存访问量，不改变数学结果。",
+        "解决什么问题": "Attention 中间矩阵随 Token 平方增长，传统实现反复读写显存成为瓶颈。",
+        "工作原理": "```text\nQKV 分块 → 分批计算 → 在线更新 → 不存完整大矩阵\n```",
+        "收益与代价": "- 收益：更快、更省显存、长上下文更可行\n- 代价：实现更复杂",
+        "与其他模块的关系": "- 优化对象：[[Attention 机制]]\n- 收益场景：[[长上下文]]",
+        "常见问题": "**Q：FlashAttention 会改变模型效果吗？**\n**A：** 不会，它改变执行方式，不改变计算结果。"
+      }
+    },
+    {
+      "id": "mhamqagqa",
+      "title": "MHA、MQA、GQA",
+      "category": "07-Attention架构",
+      "day": 7,
+      "dayLabel": "第 7 天",
+      "summary": "三种 K、V 组织方式，决定 KV Cache 大小与表达能力。",
+      "definition": "MHA 每头独立 K、V；MQA 所有头共享一套 K、V；GQA 分组共享 K、V，是效果与成本的折中。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "多头 Attention",
+        "KV Cache",
+        "MLA"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/07-Attention架构/MHA、MQA、GQA.md",
+      "sections": {
+        "一句话定义": "MHA 每头独立 K、V；MQA 所有头共享一套 K、V；GQA 分组共享 K、V，是效果与成本的折中。",
+        "对比": "| 结构 | K、V 组织 | KV Cache | 表达能力 |\n|---|---|---|---|\n| MHA | 每头一套 | 最大 | 最强 |\n| GQA | 每组一套 | 中等 | 折中（主流） |\n| MQA | 全部一套 | 最小 | 最弱 |",
+        "关键点": "- KV Cache 大小由 K、V 头数量决定\n- Q 不共享（各头从不同角度查询）\n- 主流大模型多采用 GQA",
+        "与其他模块的关系": "- 影响 [[KV Cache]]\n- 进一步压缩：[[MLA]]",
+        "常见问题": "**Q：为什么 GQA 是主流？**\n**A：** 在效果与显存之间取得平衡，KV Cache 显著小于 MHA。"
+      }
+    },
+    {
+      "id": "mla",
+      "title": "MLA",
+      "category": "07-Attention架构",
+      "day": 7,
+      "dayLabel": "第 7 天",
+      "summary": "把 K、V 压缩成小向量再存储，大幅降低 KV Cache。",
+      "definition": "MLA（Multi-head Latent Attention）把 K、V 压缩成一个小向量存储，使用时再解压，大幅减少 KV Cache。",
+      "problem": "即使 GQA，超长上下文的 KV Cache 仍然巨大。",
+      "steps": [
+        "```text",
+        "计算 K、V → 压缩存储 → 使用时解压 → 显存大幅下降",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "MHA、MQA、GQA",
+        "KV Cache",
+        "长上下文"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/07-Attention架构/MLA.md",
+      "sections": {
+        "一句话定义": "MLA（Multi-head Latent Attention）把 K、V 压缩成一个小向量存储，使用时再解压，大幅减少 KV Cache。",
+        "解决什么问题": "即使 GQA，超长上下文的 KV Cache 仍然巨大。",
+        "工作原理": "```text\n计算 K、V → 压缩存储 → 使用时解压 → 显存大幅下降\n```",
+        "收益与代价": "- 收益：KV Cache 大幅缩小，支持更长上下文\n- 代价：使用时多一步解压计算",
+        "与其他模块的关系": "- 对比：[[MHA、MQA、GQA]]\n- 服务场景：[[长上下文]]",
+        "常见问题": "**Q：MLA 会明显损失精度吗？**\n**A：** 设计上尽量压缩而不损失表达能力，主要代价是解压计算。"
+      }
+    },
+    {
+      "id": "长上下文",
+      "title": "长上下文",
+      "category": "07-Attention架构",
+      "day": 7,
+      "dayLabel": "第 7 天",
+      "summary": "长上下文的计算量、KV Cache 与显存访问三重成本。",
+      "definition": "长上下文指模型一次处理大量 Token，这会同时带来计算量、KV Cache 与显存访问三方面的成本上升。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "KV Cache",
+        "FlashAttention",
+        "MLA",
+        "上下文与多轮对话"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/07-Attention架构/长上下文.md",
+      "sections": {
+        "一句话定义": "长上下文指模型一次处理大量 Token，这会同时带来计算量、KV Cache 与显存访问三方面的成本上升。",
+        "三重成本": "| 成本 | 增长方式 | 对应优化 |\n|---|---|---|\n| 计算量 | Token 平方增长 | FlashAttention、Chunked Prefill |\n| KV Cache | Token 线性增长 | GQA/MLA、量化、PagedAttention |\n| 显存访问 | 读写变多 | FlashAttention、Offload |",
+        "关键点": "- “支持 128K”不等于“高效使用 128K”\n- 上下文越长，模型未必能充分利用所有信息",
+        "与其他模块的关系": "- 缓存：[[KV Cache]]、[[MLA]]\n- 计算：[[FlashAttention]]",
+        "常见问题": "**Q：为什么长上下文成本高？**\n**A：** Token 增多导致计算、缓存与显存访问同时上升。"
+      }
+    },
+    {
+      "id": "dense-model",
+      "title": "Dense Model",
+      "category": "08-MoE基础",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "所有参数每步都参与计算的模型。",
+      "definition": "Dense Model（稠密模型）每次处理 Token 时，所有参数都参与计算，参数量等于每步计算量。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "MoE",
+        "Attention 与 FFN"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/08-MoE基础/Dense Model.md",
+      "sections": {
+        "一句话定义": "Dense Model（稠密模型）每次处理 Token 时，所有参数都参与计算，参数量等于每步计算量。",
+        "特点": "- 效果稳定，实现简单\n- 参数越多能力越强，但每步计算与显存成本线性上升\n- FFN 占参数量大头",
+        "与其他模块的关系": "- 对比对象：[[MoE]]",
+        "常见问题": "**Q：Dense 和 MoE 的核心区别是什么？**\n**A：** Dense 每步算全部参数；MoE 每步只激活部分专家。"
+      }
+    },
+    {
+      "id": "expert",
+      "title": "Expert",
+      "category": "08-MoE基础",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "本质是 FFN，MoE 的基本计算单元。",
+      "definition": "Expert（专家）本质是一个 FFN 网络；MoE 把单个 FFN 替换成多个专家，每个 Token 只经过少数专家。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "MoE",
+        "Router 与 Top-K Routing",
+        "Shared Expert 与专家粒度"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/08-MoE基础/Expert.md",
+      "sections": {
+        "一句话定义": "Expert（专家）本质是一个 FFN 网络；MoE 把单个 FFN 替换成多个专家，每个 Token 只经过少数专家。",
+        "分工": "- 不同专家在训练中逐渐形成对不同内容的分工\n- 不是人工贴标签，是训练学出来的",
+        "关键点": "- 专家数量与大小（粒度）是效果与成本的权衡\n- 所有专家参数都要加载到显存",
+        "与其他模块的关系": "- 属于：[[MoE]]\n- 选择：[[Router 与 Top-K Routing]]",
+        "常见问题": "**Q：Token 会经过所有专家吗？**\n**A：** 不会，只经过 Router 选中的少数专家。"
+      }
+    },
+    {
+      "id": "moe",
+      "title": "MoE",
+      "category": "08-MoE基础",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "总参数大，每步只激活部分专家的模型结构。",
+      "definition": "MoE（Mixture of Experts，混合专家）拥有很多专家参数，但每个 Token 只激活少数专家，实现参数量与计算量分离。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Expert",
+        "Router 与 Top-K Routing",
+        "Dense Model"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/08-MoE基础/MoE.md",
+      "sections": {
+        "一句话定义": "MoE（Mixture of Experts，混合专家）拥有很多专家参数，但每个 Token 只激活少数专家，实现参数量与计算量分离。",
+        "核心特征": "```text\n计算量：按激活专家参数算（小）\n显存：按全部专家参数算（大）\n```",
+        "使用位置": "MoE 通常替换 Transformer Block 中的 FFN，Attention 保持不变。",
+        "收益与代价": "- 收益：相同计算量下能力更强\n- 代价：显存大、通信多、路由与负载管理复杂",
+        "与其他模块的关系": "- 组成：[[Expert]]、[[Router 与 Top-K Routing]]\n- 对比：[[Dense Model]]",
+        "常见问题": "**Q：MoE 对 KV Cache 有影响吗？**\n**A：** 没有直接影响，KV Cache 由 Attention 产生，MoE 替换的是 FFN。"
+      }
+    },
+    {
+      "id": "router-与-top-k-routing",
+      "title": "Router 与 Top-K Routing",
+      "category": "08-MoE基础",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "给专家打分、选 Top-K 个专家、按权重合并输出。",
+      "definition": "Router 给每个专家打分，选出 Top-K 个专家，再按分数加权合并输出。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "Token 打分 → 选 Top-K 专家 → 权重归一化 → 加权合并",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "MoE",
+        "Expert",
+        "Token Choice 与 Expert Choice"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/08-MoE基础/Router 与 Top-K Routing.md",
+      "sections": {
+        "一句话定义": "Router 给每个专家打分，选出 Top-K 个专家，再按分数加权合并输出。",
+        "工作原理": "```text\nToken 打分 → 选 Top-K 专家 → 权重归一化 → 加权合并\n```",
+        "关键点": "- Router 是训练出来的，不是人工规则\n- Top-K 决定激活数量，权重决定各专家贡献比例\n- Router 对量化敏感，应保持高精度",
+        "与其他模块的关系": "- 属于：[[MoE]]\n- 选择对象：[[Expert]]\n- 负载问题：[[Token Choice 与 Expert Choice]]",
+        "常见问题": "**Q：Router 怎么知道哪个专家合适？**\n**A：** 通过训练自动学习，Token 表示与专家参数匹配越好，分数越高。"
+      }
+    },
+    {
+      "id": "shared-expert-与专家粒度",
+      "title": "Shared Expert 与专家粒度",
+      "category": "08-MoE基础",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "所有 Token 必走的通用专家，以及专家大小与数量的设计。",
+      "definition": "Shared Expert 是所有 Token 必走的通用专家；Expert Granularity 决定专家的大小与数量。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "MoE",
+        "Expert"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/08-MoE基础/Shared Expert 与专家粒度.md",
+      "sections": {
+        "一句话定义": "Shared Expert 是所有 Token 必走的通用专家；Expert Granularity 决定专家的大小与数量。",
+        "Shared Expert": "- 承载基础语法、通用语义等所有 Token 都需要的能力\n- 不经过 Router 选择",
+        "专家粒度": "| 粒度 | 优点 | 缺点 |\n|---|---|---|\n| 粗粒度（少而大） | 路由简单 | 组合不灵活 |\n| 细粒度（多而小） | 组合灵活、效果更好 | 管理复杂、通信多 |",
+        "常见组合": "“细粒度专家 + 共享专家”是当前主流 MoE 设计。",
+        "与其他模块的关系": "- 属于：[[MoE]]",
+        "常见问题": "**Q：Shared Expert 和普通专家有什么区别？**\n**A：** Shared Expert 所有 Token 必走，普通专家由 Router 选择。"
+      }
+    },
+    {
+      "id": "expert-parallel",
+      "title": "Expert Parallel",
+      "category": "09-MoE路由与负载",
+      "day": 9,
+      "dayLabel": "第 9 天",
+      "summary": "把不同专家分布到不同 GPU，Token 按路由跨卡计算。",
+      "definition": "Expert Parallel（EP）把不同专家分布到不同 GPU 上并行计算，Token 通过路由跨卡寻找专家。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "Token 在 GPU A 完成 Attention → 路由到专家所在 GPU B → 计算 → 结果送回",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Dispatch 与 Combine",
+        "All-to-All 通信",
+        "TP、PP、DP"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/09-MoE路由与负载/Expert Parallel.md",
+      "sections": {
+        "一句话定义": "Expert Parallel（EP）把不同专家分布到不同 GPU 上并行计算，Token 通过路由跨卡寻找专家。",
+        "为什么需要": "专家总参数大，单卡放不下；且不同专家可并行提升吞吐。",
+        "工作原理": "```text\nToken 在 GPU A 完成 Attention → 路由到专家所在 GPU B → 计算 → 结果送回\n```",
+        "代价": "- 跨卡通信（All-to-All）\n- GPU 等待其他卡的数据",
+        "与其他模块的关系": "- 通信：[[All-to-All 通信]]、[[Dispatch 与 Combine]]\n- 对比：[[TP、PP、DP]]",
+        "常见问题": "**Q：MoE 加 GPU 一定更快吗？**\n**A：** 不一定，通信开销可能抵消算力收益。"
+      }
+    },
+    {
+      "id": "token-choice-与-expert-choice",
+      "title": "Token Choice 与 Expert Choice",
+      "category": "09-MoE路由与负载",
+      "day": 9,
+      "dayLabel": "第 9 天",
+      "summary": "Token 选专家 vs 专家选 Token 两种路由方式。",
+      "definition": "Token Choice 是 Token 主动选择专家；Expert Choice 是专家主动挑选 Token，每个专家有容量上限。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Router 与 Top-K Routing",
+        "负载不均衡"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/09-MoE路由与负载/Token Choice 与 Expert Choice.md",
+      "sections": {
+        "一句话定义": "Token Choice 是 Token 主动选择专家；Expert Choice 是专家主动挑选 Token，每个专家有容量上限。",
+        "对比": "| 方式 | 谁选谁 | 均衡性 | 实现 |\n|---|---|---|---|\n| Token Choice | Token 选专家 | 容易扎堆 | 较简单 |\n| Expert Choice | 专家选 Token | 天然均衡 | 较复杂 |",
+        "关键点": "- Expert Choice 专家选满后停止接收，剩余 Token 由其他专家处理\n- Expert Choice 路由计算量更大，框架支持不如 Token Choice 成熟",
+        "与其他模块的关系": "- 路由基础：[[Router 与 Top-K Routing]]\n- 引发问题：[[负载不均衡]]",
+        "常见问题": "**Q：为什么 Expert Choice 天然更均衡？**\n**A：** 每个专家有处理容量上限，不会无限接收 Token。"
+      }
+    },
+    {
+      "id": "负载不均衡",
+      "title": "负载不均衡",
+      "category": "09-MoE路由与负载",
+      "day": 9,
+      "dayLabel": "第 9 天",
+      "summary": "Token 扎堆导致热门专家过载、冷门专家闲置。",
+      "definition": "负载不均衡指大量 Token 集中到少数专家，导致热门专家过载、冷门专家闲置。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Token Choice 与 Expert Choice",
+        "负载均衡与 EPLB",
+        "专家观测体系"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/09-MoE路由与负载/负载不均衡.md",
+      "sections": {
+        "一句话定义": "负载不均衡指大量 Token 集中到少数专家，导致热门专家过载、冷门专家闲置。",
+        "为什么发生": "语言数据分布不均匀，相似 Token 倾向选择同一批专家。",
+        "后果": "- 热门专家排队，延迟上升\n- 瓶颈卡限制整体吞吐\n- 冷门专家更新少，能力弱（恶性循环）\n- Router 被迫次优分配，效果下降",
+        "与其他模块的关系": "- 成因：[[Token Choice 与 Expert Choice]]\n- 解决：[[负载均衡与 EPLB]]\n- 观测：[[专家观测体系]]",
+        "常见问题": "**Q：为什么不能强制专家接收一样多的 Token？**\n**A：** 强制分散会把 Token 分给次优专家，效果下降。"
+      }
+    },
+    {
+      "id": "负载均衡与-eplb",
+      "title": "负载均衡与 EPLB",
+      "category": "09-MoE路由与负载",
+      "day": 9,
+      "dayLabel": "第 9 天",
+      "summary": "训练时用 Loss 惩罚不均衡，推理时用 EPLB 动态调整专家分布。",
+      "definition": "训练阶段用负载均衡 Loss 让 Router 学会分散；推理阶段用 EPLB 动态迁移或复制专家缓解热点。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "训练：不均衡 → 增加损失 → Router 更分散",
+        "推理：EPLB → 观察负载 → 迁移/复制专家 → 重新均衡",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "负载不均衡",
+        "Expert Parallel"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/09-MoE路由与负载/负载均衡与 EPLB.md",
+      "sections": {
+        "一句话定义": "训练阶段用负载均衡 Loss 让 Router 学会分散；推理阶段用 EPLB 动态迁移或复制专家缓解热点。",
+        "工作原理": "```text\n训练：不均衡 → 增加损失 → Router 更分散\n推理：EPLB → 观察负载 → 迁移/复制专家 → 重新均衡\n```",
+        "EPLB 手段": "- 专家迁移：移到更空闲的 GPU\n- 专家复制：热门专家创建副本并行处理",
+        "代价": "迁移与复制需要显存和通信，是权衡后的动态决策。",
+        "与其他模块的关系": "- 解决：[[负载不均衡]]\n- 载体：[[Expert Parallel]]",
+        "常见问题": "**Q：训练均衡了，推理还会不均衡吗？**\n**A：** 会，推理时 Token 分布动态变化，需要 EPLB 实时调整。"
+      }
+    },
+    {
+      "id": "all-to-all-通信",
+      "title": "All-to-All 通信",
+      "category": "10-MoE通信",
+      "day": 10,
+      "dayLabel": "第 10 天",
+      "summary": "每张卡向所有卡发送数据，同时接收所有卡的数据。",
+      "definition": "All-to-All 是每张 GPU 向所有卡发送数据、同时接收所有卡数据的通信模式，适合动态路由。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "NCCL",
+        "Dispatch 与 Combine",
+        "MoE 推理瓶颈与通信优化"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/10-MoE通信/All-to-All 通信.md",
+      "sections": {
+        "一句话定义": "All-to-All 是每张 GPU 向所有卡发送数据、同时接收所有卡数据的通信模式，适合动态路由。",
+        "为什么 MoE 需要": "路由是动态的，Token 下一轮去哪张卡无法预先确定。",
+        "开销来源": "- 数据分散到多个目标\n- 接收整理与缓冲\n- 同步等待\n- 互联带宽压力",
+        "优化方向": "- 通信与计算重叠，掩盖通信时间\n- 减少跨卡、合理 Batch",
+        "与其他模块的关系": "- 实现：[[NCCL]]\n- 阶段：[[Dispatch 与 Combine]]",
+        "常见问题": "**Q：如何让通信不影响总延迟？**\n**A：** 让 GPU 计算一个专家时同时传输其他 Token，通信时间被掩盖。"
+      }
+    },
+    {
+      "id": "dispatch-与-combine",
+      "title": "Dispatch 与 Combine",
+      "category": "10-MoE通信",
+      "day": 10,
+      "dayLabel": "第 10 天",
+      "summary": "Token 发送到专家所在卡，结果送回并按权重合并。",
+      "definition": "Dispatch 把 Token 发送到被选中专家所在的位置；Combine 把专家计算结果送回并按权重合并。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "All-to-All 通信",
+        "Expert Parallel",
+        "MoE 推理瓶颈与通信优化"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/10-MoE通信/Dispatch 与 Combine.md",
+      "sections": {
+        "一句话定义": "Dispatch 把 Token 发送到被选中专家所在的位置；Combine 把专家计算结果送回并按权重合并。",
+        "为什么需要两轮通信": "```text\n第一轮（Dispatch）：Token 去专家所在卡\n第二轮（Combine）：结果回到原卡继续计算\n```",
+        "Dispatch 发送什么": "- Token 向量\n- 路由权重\n- Token 标识\n- 专家选择信息",
+        "与其他模块的关系": "- 底层实现：[[All-to-All 通信]]\n- 场景：[[Expert Parallel]]",
+        "常见问题": "**Q：Combine 为什么也要通信？**\n**A：** 专家结果在原卡之外，必须送回原卡才能继续后续模型层。"
+      }
+    },
+    {
+      "id": "moe-推理瓶颈与通信优化",
+      "title": "MoE 推理瓶颈与通信优化",
+      "category": "10-MoE通信",
+      "day": 10,
+      "dayLabel": "第 10 天",
+      "summary": "MoE 推理的五大瓶颈与三个通信优化层面。",
+      "definition": "MoE 推理的主要瓶颈是计算、显存带宽、通信、路由调度和显存容量；通信优化分三个层面。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "All-to-All 通信",
+        "专家观测体系",
+        "GPU 利用率"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/10-MoE通信/MoE 推理瓶颈与通信优化.md",
+      "sections": {
+        "一句话定义": "MoE 推理的主要瓶颈是计算、显存带宽、通信、路由调度和显存容量；通信优化分三个层面。",
+        "五大瓶颈": "| 瓶颈 | 表现 |\n|---|---|\n| 计算 | GPU 算力不足 |\n| 显存带宽 | 参数读取压力大 |\n| 通信 | GPU 等待跨卡数据 |\n| 路由调度 | 负载不均衡 |\n| 显存容量 | 专家参数 + KV Cache 超限 |",
+        "通信优化三层": "```text\n减少通信量（专家本地化、低精度）\n减少通信次数（批量合并）\n隐藏通信时间（通信与计算重叠）\n```",
+        "与其他模块的关系": "- 观测：[[专家观测体系]]\n- 硬件：[[NVLink 与 PCIe]]",
+        "常见问题": "**Q：怎么判断是通信瓶颈？**\n**A：** GPU 利用率不高但等待时间长，增加 GPU 不线性提升吞吐。"
+      }
+    },
+    {
+      "id": "nccl",
+      "title": "NCCL",
+      "category": "10-MoE通信",
+      "day": 10,
+      "dayLabel": "第 10 天",
+      "summary": "英伟达多 GPU 通信库，提供 AllReduce、All-to-All 等原语。",
+      "definition": "NCCL 是英伟达提供的多 GPU 通信库，封装 AllReduce、AllGather、All-to-All 等通信操作。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "All-to-All 通信",
+        "Expert Parallel"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/10-MoE通信/NCCL.md",
+      "sections": {
+        "一句话定义": "NCCL 是英伟达提供的多 GPU 通信库，封装 AllReduce、AllGather、All-to-All 等通信操作。",
+        "为什么需要": "多卡通信涉及连接建立、数据分包、带宽调度等底层细节，需要标准化封装。",
+        "MoE 的使用": "- Token 的 Dispatch 与 Combine 通常由 NCCL 的 All-to-All 完成\n- 通信效率直接影响 MoE 吞吐",
+        "与其他模块的关系": "- 提供原语：[[All-to-All 通信]]",
+        "常见问题": "**Q：All-to-All 和 NCCL 什么关系？**\n**A：** All-to-All 是通信模式，NCCL 是实现它的底层工具。"
+      }
+    },
+    {
+      "id": "gptq-与-awq",
+      "title": "GPTQ 与 AWQ",
+      "category": "11-模型压缩",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "两种减少量化损失的方法：误差补偿与激活重要性保护。",
+      "definition": "GPTQ 逐层最小化量化误差；AWQ 根据激活值分布保护重要通道。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "量化",
+        "PTQ 与 QAT"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/11-模型压缩/GPTQ 与 AWQ.md",
+      "sections": {
+        "一句话定义": "GPTQ 逐层最小化量化误差；AWQ 根据激活值分布保护重要通道。",
+        "对比": "| 方法 | 判断依据 | 思路 |\n|---|---|---|\n| GPTQ | 量化误差 | 逐层补偿，整体误差最小 |\n| AWQ | 激活值 | 保护被大激活值触发的参数 |",
+        "核心观察": "- 参数重要性由它处理的激活值决定\n- 不是对所有参数一视同仁",
+        "与其他模块的关系": "- 服务：[[量化]]",
+        "常见问题": "**Q：两者可以同时用吗？**\n**A：** 它们属于不同思路，实际以框架支持和方法效果为准。"
+      }
+    },
+    {
+      "id": "ptq-与-qat",
+      "title": "PTQ 与 QAT",
+      "category": "11-模型压缩",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "训练后量化与量化感知训练两种量化时机。",
+      "definition": "PTQ 是训练后直接量化，成本低；QAT 是训练时考虑量化误差，效果好但需要重训。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "量化",
+        "GPTQ 与 AWQ"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/11-模型压缩/PTQ 与 QAT.md",
+      "sections": {
+        "一句话定义": "PTQ 是训练后直接量化，成本低；QAT 是训练时考虑量化误差，效果好但需要重训。",
+        "对比": "| 对比 | PTQ | QAT |\n|---|---|---|\n| 时机 | 训练完成后 | 训练过程中 |\n| 成本 | 低 | 高 |\n| 效果 | 误差可能大 | 模型学会适应量化 |\n| 适用 | 快速部署 | 效果要求高 |",
+        "与其他模块的关系": "- 属于：[[量化]]\n- 减损算法：[[GPTQ 与 AWQ]]",
+        "常见问题": "**Q：默认应该选哪种？**\n**A：** 大多数场景从 PTQ 开始，效果不可接受再考虑 QAT。"
+      }
+    },
+    {
+      "id": "专家压缩",
+      "title": "专家压缩",
+      "category": "11-模型压缩",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "按敏感度混合精度量化，并对低使用率专家剪枝或合并。",
+      "definition": "专家压缩包括专家量化、剪枝和合并，目标是在尽量保留能力的前提下降低 MoE 的显存与成本。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "量化",
+        "MoE",
+        "专家观测体系"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/11-模型压缩/专家压缩.md",
+      "sections": {
+        "一句话定义": "专家压缩包括专家量化、剪枝和合并，目标是在尽量保留能力的前提下降低 MoE 的显存与成本。",
+        "三种方式": "| 方式 | 做法 | 代价 |\n|---|---|---|\n| 专家量化 | 每个专家变小 | 精度损失 |\n| 专家剪枝 | 删除低使用率专家 | 能力丢失且不可逆 |\n| 专家合并 | 相似专家融合 | 部分精度损失 |",
+        "混合精度原则": "```text\nRouter、共享专家、Attention → 保持高精度\n冷门路由专家 → 可以 INT8/INT4\n```\n\n把精度花在影响大的部分，压缩用在影响小的部分。",
+        "与其他模块的关系": "- 对象：[[MoE]]\n- 减损：[[量化]]",
+        "常见问题": "**Q：为什么 Router 不能量化？**\n**A：** Router 选错专家会导致计算白做、输出质量下降。"
+      }
+    },
+    {
+      "id": "数据格式与精度",
+      "title": "数据格式与精度",
+      "category": "11-模型压缩",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "不同数字格式占用不同字节数，决定模型显存与精度。",
+      "definition": "模型参数用不同格式存储，格式决定每个数字占用的字节数，从而决定显存与精度。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "量化",
+        "KV Cache"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/11-模型压缩/数据格式与精度.md",
+      "sections": {
+        "一句话定义": "模型参数用不同格式存储，格式决定每个数字占用的字节数，从而决定显存与精度。",
+        "格式对比": "| 格式 | 字节/参数 | 精度 | 70B 模型显存 |\n|---|---|---|---|\n| FP32 | 4 | 最高 | 280 GB |\n| FP16 | 2 | 较高，范围小 | 140 GB |\n| BF16 | 2 | 较低，范围大 | 140 GB |\n| INT8 | 1 | 256 档位 | 70 GB |\n| INT4 | 0.5 | 16 档位 | 35 GB |",
+        "核心公式": "```text\n参数显存 = 参数量 × 每参数字节数\n```",
+        "关键点": "- FP16 精度高但易溢出；BF16 范围大更稳定，大模型训练常用\n- 量化用更少字节，精度更低",
+        "与其他模块的关系": "- 压缩手段：[[量化]]",
+        "常见问题": "**Q：FP16 一定比 BF16 好吗？**\n**A：** 不一定，FP16 精度高但范围小，大模型训练中 BF16 更稳定。"
+      }
+    },
+    {
+      "id": "知识蒸馏",
+      "title": "知识蒸馏",
+      "category": "11-模型压缩",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "让一个小模型学习大模型的能力，获得接近的效果。",
+      "definition": "知识蒸馏让一个小模型（学生）模仿大模型（教师）的输出与判断，获得接近的能力。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "量化",
+        "LoRA"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/11-模型压缩/知识蒸馏.md",
+      "sections": {
+        "一句话定义": "知识蒸馏让一个小模型（学生）模仿大模型（教师）的输出与判断，获得接近的能力。",
+        "两种方式": "| 方式 | 使用信息 | 特点 |\n|---|---|---|\n| 黑盒蒸馏 | 输入输出 | 简单通用 |\n| 白盒蒸馏 | 内部层输出等 | 信息更丰富，依赖结构可访问 |",
+        "收益与代价": "- 收益：模型更小、推理更快、成本更低\n- 代价：复杂推理能力可能下降",
+        "与其他模块的关系": "- 可叠加：[[量化]]（先蒸馏再量化）\n- 对比：[[LoRA]]（适配方式不同）",
+        "常见问题": "**Q：蒸馏和量化可以一起用吗？**\n**A：** 可以，先蒸馏出小模型，再对小模型量化，成本更低。"
+      }
+    },
+    {
+      "id": "量化",
+      "title": "量化",
+      "category": "11-模型压缩",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "用更少字节表示参数，降低显存与带宽，代价是精度损失。",
+      "definition": "量化用更少字节的数字表示模型参数或计算数据，降低显存与带宽，代价是精度损失。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "数据格式与精度",
+        "GPTQ 与 AWQ",
+        "专家压缩"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/11-模型压缩/量化.md",
+      "sections": {
+        "一句话定义": "量化用更少字节的数字表示模型参数或计算数据，降低显存与带宽，代价是精度损失。",
+        "原理": "```text\n浮点数 → 整数档位（scale + offset）→ 近似还原\n```",
+        "两种量化": "| 类型 | 对象 | 难度 |\n|---|---|---|\n| 权重量化 | 模型参数 | 固定，误差可控 |\n| 激活量化 | 中间计算值 | 动态，更难 |",
+        "收益": "- 显存下降\n- 参数读取量减少 → 带宽压力降低 → 生成更快\n- 部署成本下降",
+        "与其他模块的关系": "- 格式基础：[[数据格式与精度]]\n- 减损方法：[[GPTQ 与 AWQ]]\n- 对象扩展：[[专家压缩]]",
+        "常见问题": "**Q：量化会明显变笨吗？**\n**A：** INT8 通常损失很小；INT4 需要 AWQ/GPTQ 等方法控制损失。"
+      }
+    },
+    {
+      "id": "lora",
+      "title": "LoRA",
+      "category": "12-模型适配与生成加速",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "冻结原始权重，只训练小增量矩阵，实现低成本适配。",
+      "definition": "LoRA（低秩适配）冻结原始权重 W，只训练两个小矩阵 A、B，新权重 W′ = W + A×B。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "MoE LoRA 与动态路由",
+        "知识蒸馏",
+        "量化"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/12-模型适配与生成加速/LoRA.md",
+      "sections": {
+        "一句话定义": "LoRA（低秩适配）冻结原始权重 W，只训练两个小矩阵 A、B，新权重 W′ = W + A×B。",
+        "为什么省": "- 训练参数远少于全量微调\n- 显存、训练成本大幅下降\n- 多任务可插拔，基础能力不丢失",
+        "秩 r 的作用": "| r | 训练参数 | 适配能力 | 成本 |\n|---|---|---|---|\n| 小 | 少 | 有限 | 低 |\n| 大 | 多 | 更强 | 高 |",
+        "推理方式": "- 合并：W + A×B（零额外延迟）\n- 分开加载：按需切换任务",
+        "与其他模块的关系": "- 扩展：[[MoE LoRA 与动态路由]]\n- 组合：[[量化]]（QLoRA）",
+        "常见问题": "**Q：LoRA 会修改基础模型参数吗？**\n**A：** 不会，原始权重冻结，只训练增量。"
+      }
+    },
+    {
+      "id": "moe-lora-与动态路由",
+      "title": "MoE LoRA 与动态路由",
+      "category": "12-模型适配与生成加速",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "按任务选择 LoRA，一个基础模型服务多领域。",
+      "definition": "MoE 模型叠加专家级或共享 LoRA，Router 按任务选择对应 LoRA，一个模型服务多个领域。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "LoRA",
+        "Router 与 Top-K Routing",
+        "MoE"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/12-模型适配与生成加速/MoE LoRA 与动态路由.md",
+      "sections": {
+        "一句话定义": "MoE 模型叠加专家级或共享 LoRA，Router 按任务选择对应 LoRA，一个模型服务多个领域。",
+        "三种方案": "| 方案 | 做法 | 特点 |\n|---|---|---|\n| 全局 LoRA | 所有专家共享一套 | 简单 |\n| 专家级 LoRA | 每个专家自己的 | 针对性强 |\n| 混合 | 共享 + 独立 | 平衡，常见 |",
+        "多租户场景": "```text\n基础模型 + LoRA-A（客服）\n基础模型 + LoRA-B（法律）\n基础模型 + LoRA-C（代码）\n```",
+        "与其他模块的关系": "- 基础：[[LoRA]]\n- 路由：[[Router 与 Top-K Routing]]",
+        "常见问题": "**Q：多租户有什么好处？**\n**A：** 一套基础模型服务多领域，无需部署多个完整模型。"
+      }
+    },
+    {
+      "id": "mtp",
+      "title": "MTP",
+      "category": "12-模型适配与生成加速",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "训练时同时预测多个未来位置，为推测解码提供高质量候选。",
+      "definition": "MTP（Multi-Token Prediction）在训练时同时预测多个未来位置的 Token，为无损推测解码提供高质量候选。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Speculative Decoding",
+        "自回归生成"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/12-模型适配与生成加速/MTP.md",
+      "sections": {
+        "一句话定义": "MTP（Multi-Token Prediction）在训练时同时预测多个未来位置的 Token，为无损推测解码提供高质量候选。",
+        "结构": "```text\n共享主干 + 多个预测头\nHead 1 预测 t+1，Head 2 预测 t+2，Head 3 预测 t+3\n```",
+        "为什么能加速": "推测解码需要高质量候选，MTP 让模型天生会预测多个未来位置，验证通过率更高。",
+        "额外价值与代价": "- 价值：训练效率高、推理加速\n- 代价：模型更复杂、训练成本上升",
+        "与其他模块的关系": "- 配合：[[Speculative Decoding]]",
+        "常见问题": "**Q：MTP 是推理框架功能吗？**\n**A：** 不是，它在训练时建立，是模型原生能力，框架负责配合。"
+      }
+    },
+    {
+      "id": "speculative-decoding",
+      "title": "Speculative Decoding",
+      "category": "12-模型适配与生成加速",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "小模型猜测候选，大模型并行验证，无损加速生成。",
+      "definition": "Speculative Decoding 用草稿模型快速猜一串 Token，大模型一次并行验证，接受连续正确的部分。",
+      "problem": "",
+      "steps": [
+        "```text",
+        "草稿模型猜 K 个 → 大模型并行验证 → 接受连续正确 → 从错误处重来",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "MTP",
+        "Prefill 与 Decode",
+        "性能指标"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/12-模型适配与生成加速/Speculative Decoding.md",
+      "sections": {
+        "一句话定义": "Speculative Decoding 用草稿模型快速猜一串 Token，大模型一次并行验证，接受连续正确的部分。",
+        "为什么快": "```text\n把“串行猜 K 次”变成“一次验证 K 个”\n```",
+        "工作原理": "```text\n草稿模型猜 K 个 → 大模型并行验证 → 接受连续正确 → 从错误处重来\n```",
+        "为什么不改变输出": "所有候选都经过大模型验证，接受的必须是大模型自己也会选的 Token。",
+        "收益与代价": "- 收益：通常提速 2～3 倍，无损\n- 代价：额外显存、草稿质量影响接受率",
+        "与其他模块的关系": "- 候选来源：[[MTP]]",
+        "常见问题": "**Q：什么时候收益差？**\n**A：** 草稿太差、输出高度随机、验证成本抵消收益时。"
+      }
+    },
+    {
+      "id": "结构化输出",
+      "title": "结构化输出",
+      "category": "12-模型适配与生成加速",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "通过约束解码保证输出格式 100% 合法。",
+      "definition": "结构化输出通过约束解码，在生成时过滤非法候选 Token，保证输出符合指定格式。",
+      "problem": "仅靠提示词不能保证 JSON、函数参数等格式合法。",
+      "steps": [
+        "```text",
+        "定义格式（JSON Schema）→ 生成时过滤非法 Token → 100% 合法输出",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "自回归生成",
+        "停止条件与流式输出"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/12-模型适配与生成加速/结构化输出.md",
+      "sections": {
+        "一句话定义": "结构化输出通过约束解码，在生成时过滤非法候选 Token，保证输出符合指定格式。",
+        "解决什么问题": "仅靠提示词不能保证 JSON、函数参数等格式合法。",
+        "工作原理": "```text\n定义格式（JSON Schema）→ 生成时过滤非法 Token → 100% 合法输出\n```",
+        "收益与代价": "- 收益：格式合法，无需反复重试\n- 代价：限制候选范围，可能影响表达",
+        "与其他模块的关系": "- 生成基础：[[自回归生成]]",
+        "常见问题": "**Q：提示词说“返回 JSON”够吗？**\n**A：** 不够，需要约束解码机制保证格式。"
+      }
+    },
+    {
+      "id": "cuda-graph",
+      "title": "CUDA Graph",
+      "category": "13-多卡并行与GPU执行",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "把固定 Kernel 序列录制为图，一次提交，减少启动开销。",
+      "definition": "CUDA Graph 把一串固定结构的 Kernel 调用录制为一张图，运行时一次提交，减少启动和调度开销。",
+      "problem": "Decode 每轮结构基本不变，但每次都重复启动和调度 Kernel。",
+      "steps": [
+        "```text",
+        "录制 Kernel 序列 → 一次提交整张图 → 减少启动开销 → GPU 更少空闲",
+        "```"
+      ],
+      "impact": [],
+      "related": [
+        "Kernel 与 GEMM",
+        "Prefill 与 Decode"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/13-多卡并行与GPU执行/CUDA Graph.md",
+      "sections": {
+        "一句话定义": "CUDA Graph 把一串固定结构的 Kernel 调用录制为一张图，运行时一次提交，减少启动和调度开销。",
+        "解决什么问题": "Decode 每轮结构基本不变，但每次都重复启动和调度 Kernel。",
+        "工作原理": "```text\n录制 Kernel 序列 → 一次提交整张图 → 减少启动开销 → GPU 更少空闲\n```",
+        "与其他模块的关系": "- 对象：[[Kernel 与 GEMM]]\n- 场景：[[Prefill 与 Decode]]",
+        "常见问题": "**Q：CUDA Graph 适合什么流程？**\n**A：** 结构稳定、重复执行的流程，如 Decode。"
+      }
+    },
+    {
+      "id": "epcpsp",
+      "title": "EP、CP、SP",
+      "category": "13-多卡并行与GPU执行",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "专家、上下文与序列三种专用并行方式。",
+      "definition": "EP 拆分 MoE 专家；CP 拆分长上下文；SP 配合 TP 降低激活显存。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Expert Parallel",
+        "长上下文",
+        "并行方式总览"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/13-多卡并行与GPU执行/EP、CP、SP.md",
+      "sections": {
+        "一句话定义": "EP 拆分 MoE 专家；CP 拆分长上下文；SP 配合 TP 降低激活显存。",
+        "对比": "| 方式 | 拆分对象 | 适用 |\n|---|---|---|\n| EP | 专家 | MoE 模型 |\n| CP | 上下文/序列 | 超长上下文 |\n| SP | 序列维度 | 长序列显存优化 |",
+        "与其他模块的关系": "- EP 细节：[[Expert Parallel]]、[[All-to-All 通信]]\n- CP 场景：[[长上下文]]",
+        "常见问题": "**Q：超长上下文优先用哪种？**\n**A：** 优先 CP；MoE 服务优先 EP。"
+      }
+    },
+    {
+      "id": "gpu-利用率",
+      "title": "GPU 利用率",
+      "category": "13-多卡并行与GPU执行",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "GPU 实际执行计算的时间占比，利用率低代表在等待或空转。",
+      "definition": "GPU 利用率是 GPU 实际执行计算的时间占比，利用率低表示 GPU 在等待或空转。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "Kernel 与 GEMM",
+        "CUDA Graph",
+        "可观测性"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/13-多卡并行与GPU执行/GPU 利用率.md",
+      "sections": {
+        "一句话定义": "GPU 利用率是 GPU 实际执行计算的时间占比，利用率低表示 GPU 在等待或空转。",
+        "利用率低的原因": "```text\n数据搬运 / Kernel 启动开销 / 通信等待 / 调度间隙\n```",
+        "计算密集 vs 带宽密集": "- Prefill：偏计算密集，靠算力\n- Decode：偏带宽密集，靠带宽和缓存",
+        "与其他模块的关系": "- 提升手段：[[Kernel 与 GEMM]]、[[CUDA Graph]]\n- 监控：[[可观测性]]",
+        "常见问题": "**Q：利用率高就等于系统好？**\n**A：** 不一定，可能在等待数据或低效计算，还要看有效吞吐。"
+      }
+    },
+    {
+      "id": "kernel-与-gemm",
+      "title": "Kernel 与 GEMM",
+      "category": "13-多卡并行与GPU执行",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "Kernel 是 GPU 计算单元，GEMM 是核心矩阵乘法运算。",
+      "definition": "Kernel 是 GPU 上的一个具体计算任务；GEMM（通用矩阵乘法）是 Attention 和 FFN 的底层核心运算。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "CUDA Graph",
+        "GPU 利用率",
+        "Attention 机制"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/13-多卡并行与GPU执行/Kernel 与 GEMM.md",
+      "sections": {
+        "一句话定义": "Kernel 是 GPU 上的一个具体计算任务；GEMM（通用矩阵乘法）是 Attention 和 FFN 的底层核心运算。",
+        "为什么 Kernel 优化重要": "- Kernel 启动有固定开销\n- 中间结果反复写读显存浪费时间",
+        "算子融合": "```text\n多个 Kernel 合并成一个 → 减少启动和显存搬运\n```",
+        "GEMM 优化方向": "- 减少访存\n- 提高并行度\n- 减少 Launch 次数",
+        "与其他模块的关系": "- 执行：[[CUDA Graph]]\n- 影响：[[GPU 利用率]]",
+        "常见问题": "**Q：同一模型在不同框架为什么速度不同？**\n**A：** 很大程度来自 Kernel 优化水平。"
+      }
+    },
+    {
+      "id": "tpppdp",
+      "title": "TP、PP、DP",
+      "category": "13-多卡并行与GPU执行",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "张量、流水线、数据三种基础并行方式。",
+      "definition": "TP 拆层内矩阵；PP 拆层/阶段；DP 拆请求/数据。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "并行方式总览",
+        "EP、CP、SP",
+        "NVLink 与 PCIe"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/13-多卡并行与GPU执行/TP、PP、DP.md",
+      "sections": {
+        "一句话定义": "TP 拆层内矩阵；PP 拆层/阶段；DP 拆请求/数据。",
+        "对比": "| 方式 | 拆分对象 | 通信 | 一句话 |\n|---|---|---|---|\n| DP | 请求/数据 | 低 | 复制模型，各处理不同请求 |\n| TP | 层内矩阵 | 高 | 多卡共同算一层 |\n| PP | 层/阶段 | 中 | 分层流水，有空转气泡 |",
+        "关键点": "- TP 每层都要通信，需要高速互联（NVLink）\n- PP 存在“气泡”（部分 GPU 空转）\n- DP 推理时几乎不通信",
+        "与其他模块的关系": "- 通信基础：[[NVLink 与 PCIe]]",
+        "常见问题": "**Q：为什么 TP 通信最频繁？**\n**A：** TP 把同一矩阵拆到多卡，每算一层都要交换中间结果。"
+      }
+    },
+    {
+      "id": "并行方式总览",
+      "title": "并行方式总览",
+      "category": "13-多卡并行与GPU执行",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "六种并行方式解决不同问题，实际系统通常组合使用。",
+      "definition": "并行方式把模型或数据分布到多张 GPU，解决单卡放不下、算力不够和并发不足的问题。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "TP、PP、DP",
+        "EP、CP、SP",
+        "NVLink 与 PCIe"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/13-多卡并行与GPU执行/并行方式总览.md",
+      "sections": {
+        "一句话定义": "并行方式把模型或数据分布到多张 GPU，解决单卡放不下、算力不够和并发不足的问题。",
+        "为什么需要多卡": "- 单卡放不下模型（参数 + KV Cache）\n- 单卡算力不够（延迟目标）\n- 需要更高并发吞吐",
+        "核心原则": "多卡不是越多越快，通信和调度开销可能抵消收益。",
+        "六种方式": "- 数据：[[TP、PP、DP]]（张量、流水线、数据）\n- 扩展：[[EP、CP、SP]]（专家、上下文、序列）",
+        "与其他模块的关系": "- 通信：[[NCCL]]、[[All-to-All 通信]]\n- 硬件：[[NVLink 与 PCIe]]",
+        "常见问题": "**Q：并行方式可以组合吗？**\n**A：** 可以，如 TP=4、PP=2、DP=8 表示多种并行同时使用。"
+      }
+    },
+    {
+      "id": "benchmark-体系",
+      "title": "Benchmark 体系",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "用可复现实验同时衡量吞吐、TTFT、TPOT 与尾延迟。",
+      "definition": "Benchmark 在统一条件下同时衡量吞吐、TTFT、TPOT 和尾延迟（P95/P99），保证可复现、可对比。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "性能指标",
+        "可观测性"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/Benchmark 体系.md",
+      "sections": {
+        "一句话定义": "Benchmark 在统一条件下同时衡量吞吐、TTFT、TPOT 和尾延迟（P95/P99），保证可复现、可对比。",
+        "为什么四个都要测": "只看单个指标会得出错误结论：\n\n- 只看吞吐：可能牺牲单用户延迟\n- 只看平均：少数慢请求被掩盖",
+        "可复现要求": "固定模型、硬件、输入/输出分布、并发模型、请求速率与 Batch 策略。",
+        "与其他模块的关系": "- 指标：[[性能指标]]\n- 监控：[[可观测性]]",
+        "常见问题": "**Q：供应商的指标可以直接对比吗？**\n**A：** 必须确认实验条件一致，否则数字不可比。"
+      }
+    },
+    {
+      "id": "gpu-关键维度",
+      "title": "GPU 关键维度",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "算力、显存容量、显存带宽与互联决定 GPU 推理表现。",
+      "definition": "GPU 的算力、显存容量、显存带宽与互联方式共同决定推理表现。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "显存与带宽",
+        "NVLink 与 PCIe",
+        "GPU 利用率"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/GPU 关键维度.md",
+      "sections": {
+        "一句话定义": "GPU 的算力、显存容量、显存带宽与互联方式共同决定推理表现。",
+        "四个关键数字": "| 维度 | 决定什么 | 类比 |\n|---|---|---|\n| 算力 | 算得快不快 | 做菜速度 |\n| 显存容量 | 放不放得下 | 操作台大小 |\n| 显存带宽 | 搬得快不快 | 拿食材速度 |\n| 互联 | 卡间通信快不快 | 传送带速度 |",
+        "核心原则": "三个维度必须匹配：放得下、搬得动、算得快。",
+        "与其他模块的关系": "- 容量相关：[[KV Cache]]、[[量化]]\n- 通信相关：[[NVLink 与 PCIe]]",
+        "常见问题": "**Q：显存大等于推理快吗？**\n**A：** 不等于，速度还取决于带宽和算力。"
+      }
+    },
+    {
+      "id": "gpu-型号分类",
+      "title": "GPU 型号分类",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "消费级、专业服务器卡与一体化 AI 主机的定位差异。",
+      "definition": "常见 GPU 按定位分为消费级、专业服务器卡与一体化 AI 主机，适配不同业务场景。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "硬件配型建议",
+        "GPU 关键维度"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/GPU 型号分类.md",
+      "sections": {
+        "一句话定义": "常见 GPU 按定位分为消费级、专业服务器卡与一体化 AI 主机，适配不同业务场景。",
+        "三类代表": "| 型号 | 定位 | 场景 |\n|---|---|---|\n| GeForce RTX 5090 D v2 | 消费级/工作站 | 学习、本地推理、原型 |\n| RTX PRO 6000D Blackwell Server Edition | 专业服务器卡 | 企业生产、多卡并行 |\n| NVIDIA GB10 / DGX Spark | 一体化 AI 主机 | 本地开发、边缘推理 |",
+        "关键点": "具体规格以官方为准；选型看四个数字：显存容量、带宽、算力、互联。",
+        "与其他模块的关系": "- 选型流程：[[硬件配型建议]]",
+        "常见问题": "**Q：怎么判断一款 GPU 适合什么？**\n**A：** 看显存能否放下模型 + KV Cache，带宽能否支撑 Decode，互联能否支撑并行。"
+      }
+    },
+    {
+      "id": "nvlink-与-pcie",
+      "title": "NVLink 与 PCIe",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "NVLink 是卡间高速互联，PCIe 是通用较慢连接。",
+      "definition": "NVLink 是 GPU 之间的高速互联，带宽远高于 PCIe；PCIe 是通用连接，速度较慢。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "拓扑与网络",
+        "TP、PP、DP",
+        "Expert Parallel"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/NVLink 与 PCIe.md",
+      "sections": {
+        "一句话定义": "NVLink 是 GPU 之间的高速互联，带宽远高于 PCIe；PCIe 是通用连接，速度较慢。",
+        "对比": "| 连接 | 速度 | 用途 |\n|---|---|---|\n| NVLink | 高带宽 | TP、EP 等高频通信 |\n| PCIe | 较慢 | CPU↔GPU、部分卡间 |\n| 节点网络 | 最慢 | 跨机通信 |",
+        "关键点": "MoE 与张量并行场景，NVLink 是效率关键。",
+        "与其他模块的关系": "- 支撑：[[TP、PP、DP]]、[[Expert Parallel]]\n- 布局：[[拓扑与网络]]",
+        "常见问题": "**Q：TP 为什么需要 NVLink？**\n**A：** TP 每层都通信，NVLink 高带宽才能支撑。"
+      }
+    },
+    {
+      "id": "专家观测体系",
+      "title": "专家观测体系",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "把路由质量、专家热度、通信拖尾和 GEMM 成本串成诊断链。",
+      "definition": "专家观测体系把路由质量、专家热度、通信拖尾和 GEMM 成本串成一条 MoE 诊断链。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "负载不均衡",
+        "MoE 推理瓶颈与通信优化",
+        "可观测性"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/专家观测体系.md",
+      "sections": {
+        "一句话定义": "专家观测体系把路由质量、专家热度、通信拖尾和 GEMM 成本串成一条 MoE 诊断链。",
+        "四个指标": "| 指标 | 看什么 | 异常信号 |\n|---|---|---|\n| 路由质量 | Router 是否选对专家 | 权重平均 → 没学会区分 |\n| 专家热度 | 每个专家接收 Token 数 | 少数专家过热 |\n| 通信拖尾 | All-to-All 最慢部分 | 个别卡通信慢 |\n| GEMM 成本 | 专家计算耗时 | 计算占比过高 |",
+        "诊断链": "```text\n路由质量差 → 专家过热 → 通信拖尾 → GEMM 排队 → 端到端变差\n```",
+        "与其他模块的关系": "- 问题：[[负载不均衡]]\n- 瓶颈：[[MoE 推理瓶颈与通信优化]]",
+        "常见问题": "**Q：MoE 变慢先看什么？**\n**A：** 先看专家热度，再判断是否通信或计算瓶颈，避免盲目加 GPU。"
+      }
+    },
+    {
+      "id": "可观测性",
+      "title": "可观测性",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "用队列、缓存与阶段指标解释端到端 SLO 变化。",
+      "definition": "可观测性通过分阶段指标（队列、Prefill、Decode、缓存、传输）解释端到端 SLO 的变化。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "性能指标",
+        "Benchmark 体系",
+        "专家观测体系"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/可观测性.md",
+      "sections": {
+        "一句话定义": "可观测性通过分阶段指标（队列、Prefill、Decode、缓存、传输）解释端到端 SLO 的变化。",
+        "SLO 是什么": "服务水平目标，例如 P95 TTFT < 1 秒、成功率 > 99.9%。",
+        "端到端延迟拆解": "```text\n网络 + API + 排队 + Prefill + Decode + 传输\n```",
+        "三类“指标说谎”": "- GPU 利用率高 ≠ 有效（可能在等待数据）\n- 平均延迟正常 ≠ 体验正常（要看 P95/P99）\n- 吞吐高 ≠ 延迟可接受（可能来自大 Batch）",
+        "与其他模块的关系": "- 指标：[[性能指标]]\n- MoE 专属：[[专家观测体系]]",
+        "常见问题": "**Q：SLO 被违反时先看什么？**\n**A：** 按“队列 → TTFT → TPOT → 尾延迟”顺序逐段排查。"
+      }
+    },
+    {
+      "id": "拓扑与网络",
+      "title": "拓扑与网络",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "通信频繁的 GPU 放得越近越好，跨机通信尽量少。",
+      "definition": "拓扑决定 GPU 之间通信的物理距离与速度，布局原则是“高频通信就近放置”。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "NVLink 与 PCIe",
+        "并行方式总览"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/拓扑与网络.md",
+      "sections": {
+        "一句话定义": "拓扑决定 GPU 之间通信的物理距离与速度，布局原则是“高频通信就近放置”。",
+        "原则": "```text\n同机 NVLink 内：最快\n同机 PCIe：较慢\n跨机网络：最慢\n```",
+        "关键点": "- 经常通信的 GPU 放在同一机器、同一 NVLink 域内\n- 跨机通信尽量少",
+        "与其他模块的关系": "- 连接：[[NVLink 与 PCIe]]\n- 影响：[[并行方式总览]]",
+        "常见问题": "**Q：为什么通信频繁的卡要放得近？**\n**A：** 跨机通信延迟高，会拖慢整体并行效率。"
+      }
+    },
+    {
+      "id": "显存与带宽",
+      "title": "显存与带宽",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "显存决定容量，带宽决定读取速度，Decode 尤其依赖带宽。",
+      "definition": "显存容量决定能放多大的模型和 KV Cache；显存带宽决定单位时间能读取多少数据。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "GPU 关键维度",
+        "KV Cache",
+        "量化"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/显存与带宽.md",
+      "sections": {
+        "一句话定义": "显存容量决定能放多大的模型和 KV Cache；显存带宽决定单位时间能读取多少数据。",
+        "为什么 Decode 依赖带宽": "Decode 每轮都要读取模型参数和 KV Cache，带宽不足时算力只能等待数据。",
+        "优化手段": "- 量化：参数变小，读取量减少\n- 缓存管理：PagedAttention、Offload",
+        "与其他模块的关系": "- 消耗方：[[KV Cache]]\n- 缓解：[[量化]]",
+        "常见问题": "**Q：TPOT 慢先怀疑什么？**\n**A：** 先看显存带宽与 KV Cache 读取是否成为瓶颈。"
+      }
+    },
+    {
+      "id": "硬件配型建议",
+      "title": "硬件配型建议",
+      "category": "14-硬件与评测",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "根据模型、上下文、并发与目标延迟选择硬件组合。",
+      "definition": "硬件配型是根据模型、上下文、并发和目标延迟，选择 GPU 数量、并行方式和优化手段。",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "GPU 型号分类",
+        "GPU 关键维度",
+        "Benchmark 体系"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/14-硬件与评测/硬件配型建议.md",
+      "sections": {
+        "一句话定义": "硬件配型是根据模型、上下文、并发和目标延迟，选择 GPU 数量、并行方式和优化手段。",
+        "选型四步": "```text\n确定模型 → 估算显存 → 定延迟/吞吐/并发目标 → 选卡数、并行与优化\n```",
+        "场景方向": "| 场景 | 主要约束 | 方向 |\n|---|---|---|\n| 低延迟聊天 | TTFT/TPOT | 高算力 + 高带宽 |\n| 长文档问答 | 显存容量 | 大显存 + 缓存优化 |\n| 高并发 API | 吞吐 | 多卡 DP + 量化 |\n| MoE 模型 | 通信 | NVLink + 专家本地化 |\n| 成本敏感 | 单位成本 | INT4 + 蒸馏 + 批量 |",
+        "核心结论": "堆硬件解决不了调度、缓存和通信问题，先做软件优化再决定扩容。",
+        "与其他模块的关系": "- 硬件分类：[[GPU 型号分类]]\n- 验证：[[Benchmark 体系]]",
+        "常见问题": "**Q：硬件选型的起点是什么？**\n**A：** 先定义业务目标（模型 + 上下文 + 并发 + 延迟），再反推硬件。"
+      }
+    },
+    {
+      "id": "faq-高频问答",
+      "title": "FAQ 高频问答",
+      "category": "90-智能体知识库",
+      "day": null,
+      "dayLabel": "全部",
+      "summary": "面向用户的高频问题与标准答案，可直接用于回答。",
+      "definition": "",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "智能体检索指南",
+        "智能体 Prompt 模板"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/90-智能体知识库/FAQ 高频问答.md",
+      "sections": {
+        "基础概念": "**Q：大模型推理是什么？**\n**A：** 训练好的模型根据用户输入计算并生成答案的过程，由推理框架负责高效调度和显存管理。详见 [[推理系统总览]]。\n\n**Q：训练和推理有什么区别？**\n**A：** 训练调整参数学习能力；推理使用已训练参数生成回答，结构相同但目标不同。详见 [[训练与推理]]。\n\n**Q：为什么模型一个字一个字地输出？**\n**A：** 模型是自回归的，只能根据已有内容预测下一个 Token，后续内容依赖前面生成结果。详见 [[自回归生成]]。",
+        "性能与体验": "**Q：为什么我的模型首字很慢？**\n**A：** 首字延迟（TTFT）主要受排队和 Prefill 影响，输入越长越慢。详见 [[Prefill 与 Decode]]。\n\n**Q：为什么生成到一半变慢？**\n**A：** 后续生成速度（TPOT）受 KV Cache、显存带宽和并发影响。详见 [[KV Cache]]、[[显存与带宽]]。\n\n**Q：为什么多轮对话越来越慢、越来越贵？**\n**A：** 历史 Token 不断累积，输入变长、KV Cache 变大，Prefill 和显存成本同步上升。详见 [[上下文与多轮对话]]。\n\n**Q：并发高了为什么延迟上升？**\n**A：** 请求增多导致排队、显存竞争和 Batch 变大，单请求延迟上升。详见 [[Batching 与 Continuous Batching]]、[[Scheduler]]。",
+        "显存与缓存": "**Q：KV Cache 是什么？为什么占显存？**\n**A：** 保存历史 Token 的 K、V，避免 Decode 重复计算；每个 Token 每层都要存两份，随上下文和并发增长。详见 [[KV Cache]]。\n\n**Q：显存不够怎么办？**\n**A：** 量化、PagedAttention 管理、Offload 扩展容量，或限制上下文/并发。详见 [[量化]]、[[PagedAttention]]、[[Hybrid KV Offload]]。\n\n**Q：为什么长上下文很贵？**\n**A：** 计算量随 Token 平方增长，KV Cache 线性增长，显存访问变多。详见 [[长上下文]]。",
+        "MoE": "**Q：MoE 是什么？为什么省计算？**\n**A：** 混合专家模型，总参数大但每个 Token 只激活部分专家，计算按激活参数算、显存按总参数算。详见 [[MoE]]。\n\n**Q：为什么 MoE 加 GPU 不一定更快？**\n**A：** 专家跨卡通信（All-to-All）开销可能抵消算力收益。详见 [[MoE 推理瓶颈与通信优化]]。",
+        "优化与部署": "**Q：量化会影响效果吗？**\n**A：** INT8 通常损失很小，INT4 需要用 AWQ/GPTQ 控制损失，上线前应做效果回归。详见 [[量化]]、[[GPTQ 与 AWQ]]。\n\n**Q：LoRA 是什么？能做什么？**\n**A：** 冻结原始权重、只训练小增量矩阵的低成本适配方法，推理时可合并为零额外延迟。详见 [[LoRA]]。\n\n**Q：如何选 GPU？**\n**A：** 看四个数字：显存容量、显存带宽、算力、互联，再结合模型、上下文、并发与延迟目标。详见 [[硬件配型建议]]。"
+      }
+    },
+    {
+      "id": "智能体使用说明",
+      "title": "智能体使用说明",
+      "category": "90-智能体知识库",
+      "day": null,
+      "dayLabel": "全部",
+      "summary": "如何把本知识库用于 AI 讲解智能体（RAG）。",
+      "definition": "",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "智能体检索指南",
+        "FAQ 高频问答",
+        "智能体 Prompt 模板"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/90-智能体知识库/README-智能体使用说明.md",
+      "sections": {
+        "目录结构": "```text\n00-总览/          首页 MOC\n01～14-*/         14 个主题目录（每个概念一个文件）\n90-智能体知识库/   检索指南、FAQ、Prompt 模板\n99-原始素材/       按天整理的详细素材（供参考）\n```",
+        "每个文件的统一结构": "```yaml\n---\ntitle: 主题名\naliases: [别名]\ntags: [分类标签]\nday: 对应天数\ncategory: 所属目录\nrelated: [\"关联主题名（用 [[]] 包裹）\"]\nsummary: 一句话摘要\n---\n```\n\n正文包含：一句话定义、解决什么问题、工作原理、性能影响、与其他模块的关系、常见问题。",
+        "用于 RAG 智能体": "1. **索引**：读取每个文件的 frontmatter 与正文，建立标题 → 内容索引\n2. **检索**：用 [[智能体检索指南]] 的关键词映射定位文件\n3. **组装**：把命中的文件内容拼入 [[智能体 Prompt 模板]]\n4. **回答**：调用大模型生成通俗讲解，返回相关主题引导",
+        "用于 Obsidian": "- 双链 `[[]]` 已内置，打开图谱视图可看到知识关联\n- 首页 [[首页]] 是总入口\n- 标签可用来筛选（推理系统、MoE、量化等）",
+        "维护建议": "- 新增概念时复制统一模板，补充 frontmatter 与双链\n- 定期检查相关主题的链接是否完整"
+      }
+    },
+    {
+      "id": "智能体-prompt-模板",
+      "title": "智能体 Prompt 模板",
+      "category": "90-智能体知识库",
+      "day": null,
+      "dayLabel": "全部",
+      "summary": "面向 AI 讲解智能体的系统提示词与回答模板。",
+      "definition": "",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "智能体检索指南",
+        "FAQ 高频问答"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/90-智能体知识库/智能体 Prompt 模板.md",
+      "sections": {
+        "系统提示词模板": "```text\n你是“大模型推理讲解助手”，面向大众用户解释大模型推理原理。\n\n要求：\n1. 先用一句话给出结论，再展开解释\n2. 使用生活化类比帮助理解，但类比后要说明真实技术含义\n3. 使用通俗语言，避免没有解释的英文缩写\n4. 回答必须基于提供的知识库内容，不要编造\n5. 如果问题涉及多个模块，先说明它们的关系\n6. 回答末尾提供相关主题名称，引导用户继续学习\n\n知识库内容：\n{检索到的知识库片段}\n\n用户问题：{问题}\n```",
+        "回答结构模板": "```text\n一句话结论：……\n\n简单解释：……\n\n类比（如需要）：……\n\n相关概念：……（可引导用户点击全景图对应模块）\n```",
+        "检索增强流程": "```text\n1. 解析问题关键词\n2. 根据检索指南定位文件\n3. 提取相关片段拼入 Prompt\n4. 调用大模型生成通俗回答\n5. 返回回答 + 相关主题跳转\n```",
+        "内容安全要求": "- 不提供训练教程以外的实操代码\n- 不编造模型规格与硬件数据（以官方为准）\n- 不确定时明确说明“该细节需要官方文档确认”"
+      }
+    },
+    {
+      "id": "智能体检索指南",
+      "title": "智能体检索指南",
+      "category": "90-智能体知识库",
+      "day": null,
+      "dayLabel": "全部",
+      "summary": "问题关键词到知识库文件的映射，用于检索路由。",
+      "definition": "",
+      "problem": "",
+      "steps": [],
+      "impact": [],
+      "related": [
+        "FAQ 高频问答",
+        "智能体 Prompt 模板"
+      ],
+      "aliases": [],
+      "tags": [],
+      "sourceFile": "llm-knowledge/90-智能体知识库/智能体检索指南.md",
+      "sections": {
+        "关键词 → 文件映射": "| 用户问题关键词 | 检索文件 |\n|---|---|\n| 慢、首字慢、TTFT | [[性能指标]]、[[Prefill 与 Decode]] |\n| 生成慢、卡顿、TPOT | [[性能指标]]、[[KV Cache]]、[[显存与带宽]] |\n| 显存、内存、OOM | [[KV Cache]]、[[Memory Manager]]、[[显存与带宽]] |\n| 上下文、长文档、128K | [[长上下文]]、[[上下文与多轮对话]] |\n| 缓存、复用、前缀 | [[Prefix Cache]]、[[KV Cache]] |\n| 碎片、分页、Block | [[PagedAttention]]、[[Block Table 与显存碎片]] |\n| Attention、注意力、QKV | [[Attention 机制]]、[[Q、K、V]]、[[关注分数与 Softmax]] |\n| 多头、GQA、MQA、MLA | [[MHA、MQA、GQA]]、[[MLA]] |\n| MoE、专家、混合专家 | [[MoE]]、[[Expert]]、[[Router 与 Top-K Routing]] |\n| 路由、负载、不均衡 | [[Router 与 Top-K Routing]]、[[负载不均衡]]、[[负载均衡与 EPLB]] |\n| 通信、All-to-All、NCCL | [[All-to-All 通信]]、[[NCCL]]、[[Dispatch 与 Combine]] |\n| 量化、INT8、INT4、精度 | [[量化]]、[[数据格式与精度]]、[[GPTQ 与 AWQ]] |\n| 蒸馏、剪枝、合并 | [[知识蒸馏]]、[[专家压缩]] |\n| LoRA、微调、适配 | [[LoRA]]、[[MoE LoRA 与动态路由]] |\n| 加速、推测解码、MTP | [[Speculative Decoding]]、[[MTP]] |\n| 并行、多卡、TP、PP、DP | [[并行方式总览]]、[[TP、PP、DP]]、[[EP、CP、SP]] |\n| GPU、显存带宽、NVLink | [[GPU 关键维度]]、[[NVLink 与 PCIe]]、[[显存与带宽]] |\n| Benchmark、压测、吞吐 | [[Benchmark 体系]]、[[性能指标]] |\n| 监控、SLO、观测 | [[可观测性]]、[[专家观测体系]] |\n| 选型、买卡、配型 | [[硬件配型建议]]、[[GPU 型号分类]] |",
+        "检索策略": "1. 提取问题中的核心名词（如“KV Cache”“MoE”）\n2. 用映射表定位 1～3 个目标文件\n3. 读取对应文件全文作为回答依据\n4. 组合多个文件回答跨领域问题",
+        "兜底策略": "如果关键词未命中，检索首页 [[首页]] 中的 MOC 列表，再按主题目录定位。"
+      }
+    }
+  ]
+}
