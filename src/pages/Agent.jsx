@@ -1,18 +1,114 @@
-﻿import { Bot } from 'lucide-react';
-import ComingSoon from '../components/ComingSoon.jsx';
+import { useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, ArrowUpRight, Bot, BookOpenCheck, Boxes, Braces, CheckCircle2, ChevronRight, CircleHelp, Cpu, Database, FileSearch, Gauge, Layers3, Lightbulb, Link2, ListChecks, MessageSquareText, Network, Search, Send, ShieldCheck, Sparkles, Workflow, X } from 'lucide-react';
+import Badge from '../components/Badge.jsx';
+import GlowCard from '../components/GlowCard.jsx';
+import knowledge from '../data/knowledge.json';
 
+const ENTRIES = knowledge.entries;
+const ENTRY_BY_ID = new Map(ENTRIES.map((entry) => [entry.id, entry]));
+const ENTRY_BY_TITLE = new Map(ENTRIES.map((entry) => [entry.title.toLowerCase(), entry]));
+
+const PRESETS = [
+  ['什么是 KV Cache？', 'kv-cache', '缓存', Database, 'cyan'],
+  ['Prefill 和 Decode 有什么区别？', 'prefill-与-decode', '流程', Workflow, 'violet'],
+  ['TTFT 和 TPOT 分别表示什么？', '性能指标', '指标', Gauge, 'emerald'],
+  ['MHA、GQA、MQA 有什么区别？', 'mhamqagqa', '架构', Network, 'amber'],
+  ['什么是 MoE？', 'moe', '模型', Boxes, 'violet'],
+  ['量化解决什么问题？', '量化', '压缩', Braces, 'amber'],
+  ['Continuous Batching 如何影响吞吐？', 'batching-与-continuous-batching', '调度', Layers3, 'cyan'],
+  ['Prefix Cache 如何复用公共前缀？', 'prefix-cache', '缓存', Database, 'emerald'],
+  ['CUDA Graph 解决什么问题？', 'cuda-graph', '执行', Cpu, 'violet'],
+  ['为什么显存会 OOM？', 'memory-manager', '显存', Database, 'amber'],
+  ['PagedAttention 优化了什么？', 'pagedattention', '缓存', Layers3, 'cyan'],
+  ['FlashAttention 会改变模型结果吗？', 'flashattention', '架构', Sparkles, 'emerald'],
+];
+
+const HINTS = {
+  'kv cache': ['kv-cache'], 'kv缓存': ['kv-cache'], 缓存: ['kv-cache', 'prefix-cache', 'pagedattention', 'memory-manager'],
+  prefill: ['prefill-与-decode', 'chunked-prefill', 'pd-分离'], decode: ['prefill-与-decode', '自回归生成', 'speculative-decoding'],
+  ttft: ['性能指标', 'prefill-与-decode'], tpot: ['性能指标', 'prefill-与-decode'], 延迟: ['性能指标', 'prefill-与-decode'], 吞吐: ['性能指标', 'batching-与-continuous-batching'],
+  batching: ['batching-与-continuous-batching'], batch: ['batching-与-continuous-batching'], 连续批处理: ['batching-与-continuous-batching'],
+  mha: ['mhamqagqa'], mqa: ['mhamqagqa'], gqa: ['mhamqagqa'], mla: ['mla'], attention: ['attention-机制', 'mhamqagqa', 'flashattention'], 注意力: ['attention-机制', 'mhamqagqa', 'flashattention'],
+  moe: ['moe'], 专家: ['moe', 'expert', 'router-与-top-k-routing'], 量化: ['量化', '数据格式与精度', 'gptq-与-awq'], int8: ['量化', '数据格式与精度'], int4: ['量化', '数据格式与精度'],
+  prefix: ['prefix-cache'], 前缀: ['prefix-cache'], cuda: ['cuda-graph'], graph: ['cuda-graph'], oom: ['memory-manager', 'pagedattention', '显存与带宽'], 显存: ['显存与带宽', 'memory-manager', 'kv-cache', 'pagedattention'],
+  碎片: ['block-table-与显存碎片', 'pagedattention', 'memory-manager'], pagedattention: ['pagedattention'], flashattention: ['flashattention'], 投机解码: ['speculative-decoding'], speculative: ['speculative-decoding'],
+  token: ['token-与-token-id', 'tokenizer', '自回归生成'], tokenizer: ['tokenizer'], 调度: ['scheduler', '请求准入抢占重排与负载均衡'], 并行: ['并行方式总览', 'tpppdp', 'epcpsp'],
+};
+
+const LINKS = {
+  'kv-cache': [['打开 KV Cache 全景模块', '/panorama', { moduleId: 'kv' }, 'cyan'], ['查看推理流水线', '/pipeline', null, 'violet'], ['计算缓存容量', '/lab', { tab: 'kv' }, 'emerald']],
+  'prefill-与-decode': [['观察完整推理流程', '/pipeline', null, 'violet'], ['打开两阶段推理模块', '/panorama', { moduleId: 'prefill_decode' }, 'cyan']],
+  性能指标: [['打开性能指标模块', '/panorama', { moduleId: 'metrics' }, 'cyan'], ['进入链路诊断台', '/diagnosis', null, 'emerald']],
+  mhamqagqa: [['对比 Attention 架构', '/compare', { tab: 'attention' }, 'amber'], ['计算不同架构缓存', '/lab', { tab: 'attn' }, 'emerald'], ['打开 KV 共享策略模块', '/panorama', { moduleId: 'mha' }, 'cyan']],
+  moe: [['对比 Dense 与 MoE', '/compare', { tab: 'moe' }, 'amber'], ['打开 MoE 全景模块', '/panorama', { moduleId: 'moe' }, 'cyan']],
+  量化: [['对比 FP16、INT8、INT4', '/compare', { tab: 'quant' }, 'amber'], ['打开量化全景模块', '/panorama', { moduleId: 'quant' }, 'cyan']],
+  'batching-与-continuous-batching': [['打开连续批处理模块', '/panorama', { moduleId: 'cb' }, 'cyan'], ['诊断吞吐问题', '/diagnosis', null, 'emerald']],
+  'prefix-cache': [['打开前缀缓存模块', '/panorama', { moduleId: 'prefix' }, 'cyan'], ['观察 Prefill 过程', '/pipeline', null, 'violet']],
+  'cuda-graph': [['打开 CUDA Graph 模块', '/panorama', { moduleId: 'cudagraph' }, 'cyan'], ['诊断启动与执行开销', '/diagnosis', null, 'emerald']],
+  'memory-manager': [['打开显存管理模块', '/panorama', { moduleId: 'mm' }, 'cyan'], ['诊断显存 OOM', '/diagnosis', null, 'emerald'], ['计算显存容量', '/lab', { tab: 'kv' }, 'violet']],
+  pagedattention: [['打开 PagedAttention 模块', '/panorama', { moduleId: 'paged' }, 'cyan'], ['诊断显存 OOM', '/diagnosis', null, 'emerald']],
+  flashattention: [['打开 FlashAttention 模块', '/panorama', { moduleId: 'flash' }, 'cyan'], ['对比 Attention 架构', '/compare', { tab: 'attention' }, 'amber']],
+};
+
+const FALLBACK = ['推理系统总览', 'prefill-与-decode', 'kv-cache', 'attention-机制', 'moe', '量化'];
+const normalize = (value) => String(value || '').toLowerCase().replace(/[\s`*_#\[\]（）()：:，,。.!！?？、/\\|\-]+/g, '');
+const clean = (value) => String(value || '').replace(/```(?:text)?/gi, '').replace(/```/g, '').replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/^#{1,6}\s+/gm, '').replace(/^[-*]\s+/gm, '').trim();
+const corpus = (entry) => [entry.id, entry.title, entry.summary, entry.definition, entry.problem, ...(entry.aliases || []), ...(entry.tags || []), ...(entry.related || []), ...Object.keys(entry.sections || {}), ...Object.values(entry.sections || {})].join(' ');
+function scoreEntry(entry, rawQuery) {
+  const query = normalize(rawQuery); const text = normalize(corpus(entry)); const title = normalize(entry.title); let value = 0; const matchedTerms = [];
+  if (query.includes(title) || query.includes(normalize(entry.id))) { value += 80; matchedTerms.push(entry.title); }
+  if (title.includes(query) && query.length >= 2) value += 36;
+  Object.entries(HINTS).forEach(([term, ids]) => { if (query.includes(normalize(term)) && ids.includes(entry.id)) { value += Math.max(10, 30 - ids.indexOf(entry.id) * 7); matchedTerms.push(term); } });
+  (rawQuery.toLowerCase().match(/[a-z][a-z0-9-]{1,}/g) || []).forEach((token) => { if (text.includes(normalize(token))) { value += 8; matchedTerms.push(token); } });
+  entry.title.toLowerCase().split(/[\s、，,/与]+/).map(normalize).filter((part) => part.length >= 2).forEach((part) => { if (query.includes(part)) { value += 16; matchedTerms.push(part); } });
+  return { entry, score: value, matchedTerms: [...new Set(matchedTerms)] };
+}
+
+export function retrieve(query, forcedId) {
+  if (forcedId && ENTRY_BY_ID.has(forcedId)) return { direct: true, matches: [{ entry: ENTRY_BY_ID.get(forcedId), score: 100, matchedTerms: ['预设问题映射'] }] };
+  const ranked = ENTRIES.map((entry) => scoreEntry(entry, query)).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
+  const matches = ranked.filter((item) => item.score >= 12).slice(0, 4);
+  if (matches.length) return { direct: true, matches };
+  return { direct: false, matches: FALLBACK.map((id) => ENTRY_BY_ID.get(id)).filter(Boolean).map((entry) => ({ entry, score: 0, matchedTerms: ['知识索引兜底'] })) };
+}
+
+function answerBlocks(entry) {
+  const sections = entry.sections || {};
+  const preferred = ['解决什么问题', '区别', '工作原理', '关键点', '收益与代价', '为什么占显存', '为什么快'];
+  const keys = preferred.filter((key) => sections[key]).concat(Object.keys(sections).filter((key) => !preferred.includes(key) && key !== '一句话定义' && key !== '与其他模块的关系' && key !== '常见问题'));
+  const blocks = keys.map((key) => ({ title: key, text: clean(sections[key]) })).filter((block) => block.text).slice(0, 3);
+  if (!blocks.length && entry.problem) blocks.push({ title: '解决什么问题', text: clean(entry.problem) });
+  if (blocks.length < 2 && entry.steps?.length) blocks.push({ title: '工作过程', text: clean(entry.steps.join('\n')) });
+  return blocks.slice(0, 3);
+}
+
+function relatedEntries(entry) { return (entry.related || []).map((title) => ENTRY_BY_TITLE.get(String(title).toLowerCase())).filter(Boolean).slice(0, 5); }
+function faqFor(entry) { const raw = entry.sections?.常见问题; if (!raw) return null; const lines = clean(raw).replace(/\*\*/g, '').split('\n').filter(Boolean); return lines.length > 1 ? { question: lines[0], answer: lines.slice(1).join(' ') } : null; }
+function toneClasses(name) { return ({ cyan: 'border-cyan-500/25 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20', violet: 'border-violet-500/25 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20', emerald: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20', amber: 'border-amber-500/25 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' })[name] || 'border-cyan-500/25 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'; }
+function AnswerBlock({ block, index }) { return <div className="rounded-xl border border-space-700/50 bg-space-950/35 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold text-space-200"><span className="flex h-5 w-5 items-center justify-center rounded-md border border-violet-500/25 bg-violet-500/10 font-mono text-[10px] text-violet-300">{index + 1}</span>{block.title}</div><p className="whitespace-pre-line text-sm leading-7 text-space-400">{block.text}</p></div>; }
 export default function Agent() {
-  return (
-    <ComingSoon
-      title="AI 讲解智能体"
-      desc="基于知识库的 RAG 问答，用通俗语言解释推理原理，并引导跳转到对应模块。"
-      icon={Bot}
-      highlights={[
-        { title: '知识库检索', desc: '按关键词映射定位相关知识模块', accent: 'cyan' },
-        { title: '大模型回答', desc: '结合检索片段生成通俗解释', accent: 'violet' },
-        { title: '主题跳转', desc: '回答末尾推荐相关全景图模块', accent: 'emerald' },
-      ]}
-      todo={['检索路由实现', 'Prompt 模板组装', '对话界面与跳转']}
-    />
-  );
+  const navigate = useNavigate();
+  const [input, setInput] = useState('');
+  const [query, setQuery] = useState('什么是 KV Cache？');
+  const [result, setResult] = useState(() => retrieve('什么是 KV Cache？', 'kv-cache'));
+  const [history, setHistory] = useState([{ question: '什么是 KV Cache？', entryId: 'kv-cache', matched: true }]);
+  const [loading, setLoading] = useState(false);
+  const entry = result.direct ? result.matches[0]?.entry : null;
+  const related = useMemo(() => entry ? relatedEntries(entry) : [], [entry]);
+  const blocks = useMemo(() => entry ? answerBlocks(entry) : [], [entry]);
+  const faq = useMemo(() => entry ? faqFor(entry) : null, [entry]);
+  const run = (question, forcedId) => { const value = question.trim(); if (!value) return; setLoading(true); setInput(''); window.setTimeout(() => { const next = retrieve(value, forcedId); setQuery(value); setResult(next); setHistory((items) => [{ question: value, entryId: next.direct ? next.matches[0]?.entry.id : null, matched: next.direct }, ...items.filter((item) => item.question !== value)].slice(0, 5)); setLoading(false); }, 220); };
+  const openEntry = (target) => run('解释 ' + target.title, target.id);
+  const submit = (event) => { event.preventDefault(); run(input); };
+
+  return <div className="space-y-6">
+    <section className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-7 md:px-8"><div className="pointer-events-none absolute -right-10 -top-20 h-56 w-56 rounded-full bg-violet-500/10 blur-3xl" /><div className="pointer-events-none absolute bottom-0 left-1/3 h-32 w-64 rounded-full bg-cyan-500/[0.06] blur-3xl" /><div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-3 flex flex-wrap items-center gap-2"><Badge variant="violet">本地知识检索</Badge><Badge variant="cyan">80 条知识记录</Badge><Badge variant="slate">离线可演示</Badge></div><h1 className="text-2xl font-bold text-gradient md:text-3xl">AI 讲解智能体</h1><p className="mt-2 max-w-3xl text-sm leading-relaxed text-space-400">输入推理问题后，系统从本地知识库检索匹配主题，组装定义、原理与关联内容，并给出可继续操作的模块入口。</p></div><div className="grid shrink-0 grid-cols-3 gap-2 text-center"><div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.07] px-3 py-2"><div className="font-mono text-lg font-bold text-cyan-300">80</div><div className="text-[10px] text-space-500">知识条目</div></div><div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.07] px-3 py-2"><div className="font-mono text-lg font-bold text-violet-300">12</div><div className="text-[10px] text-space-500">预设问题</div></div><div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2"><div className="font-mono text-lg font-bold text-emerald-300">6</div><div className="text-[10px] text-space-500">模块联动</div></div></div></div></section>
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.65fr)]"><div className="space-y-5">
+      <GlowCard className="p-5" accent="violet"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2 text-sm font-semibold text-space-100"><MessageSquareText size={17} className="text-violet-400" />提出问题</div><p className="mt-1 text-xs leading-relaxed text-space-500">支持术语、机制、指标、显存与性能问题。</p></div><Badge variant="slate">本地 Mock 回答</Badge></div><form onSubmit={submit} className="mt-4"><div className="relative"><Search size={16} className="pointer-events-none absolute left-3 top-3.5 text-space-600" /><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(event); } }} rows={3} placeholder="例如：为什么长上下文会增加显存压力？" className="w-full resize-none rounded-xl border border-space-700/60 bg-space-950/55 py-3 pl-10 pr-10 text-sm leading-relaxed text-space-200 outline-none transition placeholder:text-space-600 focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/10" />{input && <button type="button" onClick={() => setInput('')} aria-label="清空输入" className="absolute right-3 top-3 rounded p-1 text-space-600 transition hover:bg-space-800 hover:text-space-300"><X size={14} /></button>}</div><button type="submit" disabled={!input.trim() || loading} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/15 px-4 py-2.5 text-sm font-medium text-violet-200 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-40">{loading ? <FileSearch size={16} className="animate-pulse" /> : <Send size={15} />}{loading ? '正在检索知识库' : '检索并生成回答'}</button></form><div className="mt-5 border-t border-space-700/45 pt-4"><div className="mb-3 flex items-center justify-between"><span className="text-xs font-medium text-space-400">最近问题</span><span className="text-[10px] text-space-600">最多保留 5 条</span></div><div className="space-y-2">{history.map((item) => <button key={item.question} type="button" onClick={() => run(item.question, item.entryId)} className="flex w-full items-center gap-2 rounded-lg border border-space-700/45 bg-space-950/30 px-3 py-2 text-left text-xs text-space-400 transition hover:border-violet-500/30 hover:text-space-200">{item.matched ? <CheckCircle2 size={13} className="shrink-0 text-emerald-400" /> : <CircleHelp size={13} className="shrink-0 text-amber-400" />}<span className="min-w-0 flex-1 truncate">{item.question}</span><ChevronRight size={13} className="shrink-0 text-space-600" /></button>)}</div></div></GlowCard>
+      <GlowCard className="p-5" accent="cyan"><div className="flex items-center gap-2 text-sm font-semibold text-space-100"><Lightbulb size={16} className="text-cyan-400" />高频问题</div><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">{PRESETS.map(([question, id, group, Icon, accent]) => { const active = entry?.id === id && result.direct; return <button key={question} type="button" onClick={() => run(question, id)} className={'group flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ' + (active ? 'border-cyan-500/35 bg-cyan-500/10' : 'border-space-700/45 bg-space-950/30 hover:border-cyan-500/25 hover:bg-space-900/70')}><span className={'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ' + toneClasses(accent)}><Icon size={14} /></span><span className="min-w-0 flex-1"><span className="block text-[10px] text-space-600">{group}</span><span className={'block text-xs leading-relaxed ' + (active ? 'text-cyan-200' : 'text-space-400 group-hover:text-space-200')}>{question}</span></span></button>; })}</div></GlowCard>
+    </div><div className="min-w-0"><AnimatePresence mode="wait">{loading ? <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex min-h-[560px] items-center justify-center rounded-2xl border border-space-700/50 bg-space-900/55"><div className="text-center"><div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-violet-500/30 bg-violet-500/10"><Bot size={26} className="text-violet-300" /><span className="absolute inset-0 animate-ping rounded-2xl border border-violet-400/20" /></div><div className="mt-4 text-sm font-medium text-space-200">正在扫描知识条目</div><div className="mt-1 text-xs text-space-500">标题 → 别名与标签 → 摘要与正文</div></div></motion.div> : result.direct && entry ? <motion.article key={query + entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="overflow-hidden rounded-2xl border border-violet-500/20 bg-gradient-to-br from-space-900/85 to-space-950/70"><header className="border-b border-space-700/50 p-5 md:p-6"><div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge variant="emerald">已命中知识主题</Badge><Badge variant="slate">{entry.category}</Badge><span className="text-[11px] text-space-600">候选 {result.matches.length} 条</span></div><div className="mt-4 flex items-start gap-3"><span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-violet-300"><Bot size={20} /></span><div><p className="text-xs text-space-500">用户问题</p><h2 className="mt-1 text-lg font-semibold leading-relaxed text-space-100">{query}</h2></div></div></div><div className="shrink-0 rounded-xl border border-space-700/45 bg-space-950/35 px-3 py-2 text-right"><div className="text-[10px] uppercase tracking-[0.16em] text-space-600">Top Match</div><div className="mt-1 text-sm font-semibold text-cyan-300">{entry.title}</div></div></div></header><div className="space-y-5 p-5 md:p-6"><section className="rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-5"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-400"><Sparkles size={14} />一句话解释</div><p className="mt-3 text-base font-medium leading-8 text-space-100">{clean(entry.definition || entry.summary)}</p></section>{blocks.length > 0 && <section><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-space-200"><BookOpenCheck size={16} className="text-violet-400" />知识库回答</div><div className="grid gap-3">{blocks.map((block, index) => <AnswerBlock key={block.title} block={block} index={index} />)}</div></section>}{faq && <section className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-4"><div className="flex items-center gap-2 text-sm font-semibold text-amber-300"><CircleHelp size={16} />{faq.question}</div><p className="mt-2 text-sm leading-7 text-space-400">{faq.answer}</p></section>}<section className="grid gap-4 lg:grid-cols-2"><div className="rounded-xl border border-space-700/50 bg-space-950/35 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-space-200"><FileSearch size={16} className="text-emerald-400" />检索依据</div><div className="mt-3 space-y-2 text-xs leading-relaxed text-space-500"><div className="flex gap-2"><span className="text-space-600">主题</span><span className="text-space-300">{entry.title}</span></div><div className="flex gap-2"><span className="text-space-600">命中</span><span className="text-space-300">{result.matches[0].matchedTerms.join('、') || '标题与正文相关度'}</span></div><div className="flex gap-2"><span className="text-space-600">来源</span><span className="break-all text-space-300">{entry.sourceFile}</span></div></div></div><div className="rounded-xl border border-space-700/50 bg-space-950/35 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-space-200"><Link2 size={16} className="text-cyan-400" />相关知识</div>{related.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">{related.map((item) => <button key={item.id} type="button" onClick={() => openEntry(item)} className="rounded-lg border border-space-700/55 bg-space-900/55 px-2.5 py-1.5 text-xs text-space-400 transition hover:border-cyan-500/30 hover:text-cyan-300">{item.title}</button>)}</div> : <p className="mt-3 text-xs leading-relaxed text-space-500">该条目未配置可直接检索的关联主题。</p>}</div></section>
+      <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 text-sm font-semibold text-space-200"><ArrowRight size={16} className="text-emerald-400" />继续操作</div><p className="mt-1 text-xs leading-relaxed text-space-500">从回答进入可视化、参数计算、方案对比或链路诊断。</p></div><div className="flex flex-wrap gap-2">{(LINKS[entry.id] || [['在互动全景图中继续检索', '/panorama', null, 'cyan']]).map(([label, path, state, linkTone]) => <button key={label} type="button" onClick={() => navigate(path, state ? { state } : undefined)} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs transition ' + toneClasses(linkTone)}>{label}<ArrowUpRight size={13} /></button>)}</div></div></section>{result.matches.length > 1 && <section><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-space-200"><ListChecks size={16} className="text-space-500" />其他候选主题</div><div className="grid gap-2 sm:grid-cols-2">{result.matches.slice(1).map((match) => <button key={match.entry.id} type="button" onClick={() => openEntry(match.entry)} className="flex items-center justify-between gap-3 rounded-xl border border-space-700/50 bg-space-950/30 px-3 py-2.5 text-left transition hover:border-violet-500/30"><span><span className="block text-xs font-medium text-space-300">{match.entry.title}</span><span className="mt-0.5 block line-clamp-1 text-[10px] text-space-600">{match.entry.summary}</span></span><ChevronRight size={14} className="shrink-0 text-space-600" /></button>)}</div></section>}</div><footer className="flex items-start gap-2 border-t border-space-700/45 bg-space-950/35 px-5 py-4 md:px-6"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-space-500" /><p className="text-[11px] leading-relaxed text-space-500">当前演示使用本地 knowledge.json 完成检索与回答组装，未调用在线大模型 API；回答内容以知识库现有定义和条目正文为准。</p></footer></motion.article> : <motion.section key={query + '-fallback'} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-space-900/85 to-space-950/70"><div className="border-b border-space-700/50 p-6"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-300"><CircleHelp size={20} /></span><div><Badge variant="amber">未找到直接匹配</Badge><h2 className="mt-3 text-lg font-semibold text-space-100">{query}</h2><p className="mt-2 text-sm leading-7 text-space-400">当前本地知识库没有足够明确的条目支持直接回答，因此不会补写未经知识库支持的结论。你可以改用更具体的推理术语，或从知识索引继续浏览。</p></div></div></div><div className="p-6"><div className="flex items-center gap-2 text-sm font-semibold text-space-200"><BookOpenCheck size={16} className="text-cyan-400" />知识索引推荐</div><div className="mt-4 grid gap-3 sm:grid-cols-2">{result.matches.map((match) => <button key={match.entry.id} type="button" onClick={() => openEntry(match.entry)} className="rounded-xl border border-space-700/50 bg-space-950/35 p-4 text-left transition hover:border-cyan-500/30 hover:bg-space-900/70"><div className="flex items-center justify-between gap-3"><span className="text-sm font-semibold text-space-200">{match.entry.title}</span><ArrowUpRight size={14} className="text-space-600" /></div><p className="mt-2 line-clamp-2 text-xs leading-relaxed text-space-500">{match.entry.summary}</p></button>)}</div><button type="button" onClick={() => navigate('/panorama')} className="mt-5 inline-flex items-center gap-2 rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-300 transition hover:bg-cyan-500/20">打开完整互动全景图<ArrowRight size={13} /></button></div><footer className="flex items-start gap-2 border-t border-space-700/45 bg-space-950/35 px-6 py-4"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-space-500" /><p className="text-[11px] leading-relaxed text-space-500">兜底结果仅用于导航，不构成对当前问题的回答。</p></footer></motion.section>}</AnimatePresence></div></section>
+  </div>;
 }
