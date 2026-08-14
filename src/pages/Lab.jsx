@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MemoryStick, Network, BarChart3 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
@@ -13,6 +14,8 @@ import ParallelPanel from '../modules/lab/ParallelPanel.jsx';
 const ICON_MAP = { MemoryStick, Network, BarChart3 };
 
 export default function Lab() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('kv');
   const [params, setParams] = useState({
     hiddenSize: 4096,
@@ -32,6 +35,14 @@ export default function Lab() {
     kvLatentDim: 512,
     ropeHeadDim: 64,
   });
+
+  useEffect(() => {
+    const requestedTab = location.state?.tab;
+    if (requestedTab && TABS.some(tab => tab.key === requestedTab)) {
+      setActiveTab(requestedTab);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     const arch = ARCHITECTURES[params.architecture];

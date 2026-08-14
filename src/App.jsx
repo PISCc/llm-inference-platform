@@ -1,11 +1,11 @@
-import { Routes, Route } from 'react-router-dom'
+import { Navigate, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
 import Home from './pages/Home.jsx'
 import Panorama from './pages/Panorama.jsx'
 import Pipeline from './pages/Pipeline.jsx'
 import Lab from './pages/Lab.jsx'
 import Compare from './pages/Compare.jsx'
-import Detective from './pages/Detective.jsx'
+import Diagnosis from './pages/Diagnosis.jsx'
 import Agent from './pages/Agent.jsx'
 
 export default function App() {
@@ -17,7 +17,8 @@ export default function App() {
         <Route path="/pipeline" element={<Pipeline />} />
         <Route path="/lab" element={<Lab />} />
         <Route path="/compare" element={<Compare />} />
-        <Route path="/detective" element={<Detective />} />
+        <Route path="/diagnosis" element={<Diagnosis />} />
+        <Route path="/detective" element={<Navigate to="/diagnosis" replace />} />
         <Route path="/agent" element={<Agent />} />
       </Route>
     </Routes>

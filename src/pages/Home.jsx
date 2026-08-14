@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Cpu, Network, FlaskConical, Scale, Search, Bot,
+  Cpu, Network, FlaskConical, Scale, ScanSearch, Bot,
   ArrowRight, Zap, Eye, MessageCircle, BarChart3, Layers
 } from 'lucide-react';
 import GlowCard from '../components/GlowCard.jsx';
@@ -36,18 +36,18 @@ const MODULES = [
   {
     to: '/compare',
     title: '方案对比台',
-    desc: 'MHA / GQA / MLA、Dense / MoE、量化精度并排对比',
+    desc: 'MHA / GQA / MQA / MLA、Dense / MoE、量化精度并排对比',
     icon: Scale,
     accent: 'amber',
     tags: ['3 组对比'],
   },
   {
-    to: '/detective',
-    title: '推理侦探',
-    desc: '从症状出发，点击定位推理链路瓶颈，获得因果链解释',
-    icon: Search,
+    to: '/diagnosis',
+    title: '推理链路诊断台',
+    desc: '从 TTFT、TPOT、OOM 等现象出发，用证据逐层定位候选瓶颈',
+    icon: ScanSearch,
     accent: 'cyan',
-    tags: ['诊断'],
+    tags: ['5 类场景', '证据链'],
   },
   {
     to: '/agent',

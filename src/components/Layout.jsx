@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Cpu, Network, FlaskConical, Scale, Search, Bot, Home } from 'lucide-react';
+import { Cpu, Network, FlaskConical, Scale, ScanSearch, Bot, Home } from 'lucide-react';
 import { cn } from '../utils/cn.js';
 import TechBackground from './TechBackground.jsx';
 
@@ -10,7 +10,7 @@ const NAV = [
   { to: '/pipeline', label: '流水线', icon: Cpu },
   { to: '/lab', label: '实验室', icon: FlaskConical },
   { to: '/compare', label: '对比台', icon: Scale },
-  { to: '/detective', label: '侦探', icon: Search },
+  { to: '/diagnosis', label: '诊断台', icon: ScanSearch },
   { to: '/agent', label: 'AI 讲解', icon: Bot },
 ];
 
