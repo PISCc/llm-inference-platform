@@ -65,15 +65,17 @@ const LINKS = {
   'kv-cache': [['打开 KV Cache 全景模块', '/panorama', { moduleId: 'kv' }, 'cyan'], ['查看推理流水线', '/pipeline', null, 'violet'], ['计算缓存容量', '/lab', { tab: 'kv' }, 'emerald']],
   'prefill-与-decode': [['观察完整推理流程', '/pipeline', null, 'violet'], ['打开两阶段推理模块', '/panorama', { moduleId: 'prefill_decode' }, 'cyan']],
   性能指标: [['打开性能指标模块', '/panorama', { moduleId: 'metrics' }, 'cyan'], ['进入链路诊断台', '/diagnosis', null, 'emerald']],
-  mhamqagqa: [['对比 Attention 架构', '/compare', { tab: 'attention' }, 'amber'], ['计算不同架构缓存', '/lab', { tab: 'attn' }, 'emerald'], ['打开 KV 共享策略模块', '/panorama', { moduleId: 'mha' }, 'cyan']],
+  mhamqagqa: [['打开 Attention 参数实验', '/lab', { tab: 'attn' }, 'emerald'], ['打开 KV 共享策略模块', '/panorama', { moduleId: 'mha' }, 'cyan'], ['打开自注意力计算模块', '/panorama', { moduleId: 'attn' }, 'violet']],
   moe: [['对比 Dense 与 MoE', '/compare', { tab: 'moe' }, 'amber'], ['打开 MoE 全景模块', '/panorama', { moduleId: 'moe' }, 'cyan']],
   量化: [['对比 FP16、INT8、INT4', '/compare', { tab: 'quant' }, 'amber'], ['打开量化全景模块', '/panorama', { moduleId: 'quant' }, 'cyan']],
-  'batching-与-continuous-batching': [['打开连续批处理模块', '/panorama', { moduleId: 'cb' }, 'cyan'], ['诊断吞吐问题', '/diagnosis', null, 'emerald']],
+  scheduler: [['对比调度与组批策略', '/compare', { tab: 'scheduling' }, 'amber'], ['打开请求调度模块', '/panorama', { moduleId: 'scheduler' }, 'cyan'], ['进入链路诊断台', '/diagnosis', null, 'emerald']],
+  'chunked-prefill': [['对比调度与组批策略', '/compare', { tab: 'scheduling' }, 'amber'], ['打开 Chunked Prefill 模块', '/panorama', { moduleId: 'chunked' }, 'cyan'], ['诊断首 Token 延迟', '/diagnosis', null, 'emerald']],
+  'batching-与-continuous-batching': [['对比调度与组批策略', '/compare', { tab: 'scheduling' }, 'amber'], ['打开连续批处理模块', '/panorama', { moduleId: 'cb' }, 'cyan'], ['诊断吞吐问题', '/diagnosis', null, 'emerald']],
   'prefix-cache': [['打开前缀缓存模块', '/panorama', { moduleId: 'prefix' }, 'cyan'], ['观察 Prefill 过程', '/pipeline', null, 'violet']],
   'cuda-graph': [['打开 CUDA Graph 模块', '/panorama', { moduleId: 'cudagraph' }, 'cyan'], ['诊断启动与执行开销', '/diagnosis', null, 'emerald']],
   'memory-manager': [['打开显存管理模块', '/panorama', { moduleId: 'mm' }, 'cyan'], ['诊断显存 OOM', '/diagnosis', null, 'emerald'], ['计算显存容量', '/lab', { tab: 'kv' }, 'violet']],
   pagedattention: [['打开 PagedAttention 模块', '/panorama', { moduleId: 'paged' }, 'cyan'], ['诊断显存 OOM', '/diagnosis', null, 'emerald']],
-  flashattention: [['打开 FlashAttention 模块', '/panorama', { moduleId: 'flash' }, 'cyan'], ['对比 Attention 架构', '/compare', { tab: 'attention' }, 'amber']],
+  flashattention: [['打开 FlashAttention 模块', '/panorama', { moduleId: 'flash' }, 'cyan'], ['打开 Attention 参数实验', '/lab', { tab: 'attn' }, 'emerald']],
 };
 
 const FALLBACK_IDS = ['推理系统总览', 'prefill-与-decode', 'kv-cache', 'attention-机制', 'moe', '量化'];
