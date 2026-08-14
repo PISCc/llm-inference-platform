@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import GlowCard from '../components/GlowCard.jsx';
 import Badge from '../components/Badge.jsx';
+import ProductHeader from '../components/ProductHeader.jsx';
 import knowledgeData from '../data/knowledge.json';
 
 const KNOWLEDGE_CASE_IDS = ['kv-cache', 'attention-机制', 'pagedattention', 'moe', 'speculative-decoding', 'flashattention'];
