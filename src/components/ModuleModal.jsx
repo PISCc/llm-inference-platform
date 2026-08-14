@@ -1,11 +1,60 @@
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowRight, GitCommit, Hash, Folder, Sparkles, Lightbulb, ShieldCheck, Link2 } from 'lucide-react';
+import { X, ArrowRight, GitCommit, Hash, Folder, Sparkles, Lightbulb } from 'lucide-react';
 import Badge from './Badge.jsx';
 import ModuleIcon from './ModuleIcon.jsx';
 
+function FlowArrow({ accent }) {
+  const uid = useId().replace(/:/g, '');
+  const clipId = `flow-arrow-clip-${uid}`;
+  const beamId = `flow-arrow-beam-${uid}`;
+  const palette = accent === 'violet'
+    ? { base: '#8b5cf6', beam: '#ddd6fe' }
+    : accent === 'emerald'
+      ? { base: '#10b981', beam: '#a7f3d0' }
+      : { base: '#06b6d4', beam: '#a5f3fc' };
+  const arrowPath = 'M2 8.25H18V3.5L30 11L18 18.5V13.75H2Z';
+
+  return (
+    <span className="relative flex h-7 w-10 shrink-0 items-center justify-center" aria-hidden="true">
+      <svg viewBox="0 0 32 22" className="h-6 w-9" focusable="false">
+        <defs>
+          <clipPath id={clipId}>
+            <path d={arrowPath} />
+          </clipPath>
+          <linearGradient id={beamId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={palette.beam} stopOpacity="0" />
+            <stop offset="48%" stopColor={palette.beam} stopOpacity="0.95" />
+            <stop offset="100%" stopColor={palette.beam} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d={arrowPath}
+          fill={palette.base}
+          fillOpacity="0.2"
+          stroke={palette.base}
+          strokeOpacity="0.72"
+          strokeWidth="1"
+          strokeLinejoin="round"
+        />
+        <g clipPath={`url(#${clipId})`}>
+          <motion.rect
+            x="-16"
+            y="0"
+            width="15"
+            height="22"
+            fill={`url(#${beamId})`}
+            initial={{ x: -16 }}
+            animate={{ x: 48 }}
+            transition={{ repeat: Infinity, duration: 1.35, ease: 'linear', repeatDelay: 0.15 }}
+          />
+        </g>
+      </svg>
+    </span>
+  );
+}
+
 function FlowSteps({ steps, accent }) {
-  const viaColor = accent === 'violet' ? 'via-violet-400/60' : accent === 'emerald' ? 'via-emerald-400/60' : 'via-cyan-400/60';
   if (!steps || steps.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -15,17 +64,7 @@ function FlowSteps({ steps, accent }) {
             {s}
             <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
           </span>
-          {i < steps.length - 1 && (
-            <span className="relative flex h-5 w-6 items-center justify-center overflow-hidden text-space-600">
-              <ArrowRight size={14} />
-              <motion.span
-                className={cn('absolute inset-0 bg-gradient-to-r from-transparent to-transparent', viaColor)}
-                initial={{ x: '-100%' }}
-                animate={{ x: '100%' }}
-                transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
-              />
-            </span>
-          )}
+          {i < steps.length - 1 && <FlowArrow accent={accent} />}
         </span>
       ))}
     </div>
@@ -185,7 +224,7 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
               </div>
 
               <div className="mt-6 rounded-xl border border-space-700/50 bg-gradient-to-br from-space-900/60 to-space-900/30 p-4">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-space-500">溯源与边界</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-space-500">条目信息</h4>
                 <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
                   <div>
                     <span className="text-space-500">编号</span>
@@ -195,12 +234,7 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
                     <span className="text-space-500">分类</span>
                     <div className="mt-0.5 text-space-300">{module.categoryLabel || module.category}</div>
                   </div>
-                  <div className="sm:col-span-2">
-                    <span className="flex items-center gap-1 text-space-500"><Link2 size={11} />项目条目来源</span>
-                    <div className="mt-0.5 break-all font-mono text-[10px] text-space-400">{module.source || '项目知识库内部整理'}</div>
-                  </div>
                 </div>
-                <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5 text-[11px] leading-relaxed text-amber-200"><ShieldCheck size={14} className="mt-0.5 shrink-0" />条目由项目知识库整理；容量与结构关系按公开定义或公式表述。性能、延迟、吞吐及硬件规格必须结合具体版本与实测条件判断。</div>
               </div>
             </div>
           </motion.div>

@@ -687,13 +687,11 @@ export default function Pipeline() {
       <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-6 text-center md:px-8">
         <div className="pointer-events-none absolute -left-20 -top-24 h-52 w-52 rounded-full bg-cyan-500/10 blur-3xl" />
         <div className="relative">
-          <Badge variant="cyan">M2 · INFERENCE PIPELINE</Badge>
-          <h1 className="mt-3 text-headline text-gradient">推理流水线模拟器</h1>
+          <h1 className="text-headline text-gradient">推理流水线模拟器</h1>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-space-400">使用项目知识库中的问题与定义，观察演示分词、Prefill、KV Cache 分支和逐步 Decode；标识符与矩阵仅用于过程追踪。</p>
           <div className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2">
             <Badge variant="slate">6 个知识库案例</Badge>
             <Badge variant="slate">可暂停与逐步推进</Badge>
-            <Badge variant="amber">不展示伪实测性能</Badge>
           </div>
         </div>
       </div>

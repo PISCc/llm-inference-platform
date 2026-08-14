@@ -201,7 +201,6 @@ function Hero({ query, setQuery }) {
               className="w-full rounded-lg border border-space-700 bg-space-900/70 py-2 pl-9 pr-4 text-sm text-space-200 outline-none ring-cyan-500/30 transition-all placeholder:text-space-600 focus:border-cyan-500/50 focus:ring-2"
             />
           </div>
-          <Badge variant="slate">数据源：项目知识库</Badge>
         </div>
       </div>
     </section>

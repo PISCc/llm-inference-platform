@@ -88,7 +88,7 @@ export default function Lab() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-6 text-center md:px-8">
         <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="relative"><Badge variant="emerald">M3 · PARAMETER LAB</Badge><h1 className="mt-3 text-2xl font-bold text-gradient">参数实验室工作台</h1>
+        <div className="relative"><h1 className="text-2xl font-bold text-gradient">参数实验室工作台</h1>
         <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-space-400">调整模型结构、上下文长度、精度与并行配置，复算 KV Cache 容量和权重容量；页面不把未经压测的性能倍率当作结论。</p></div>
       </div>
 
