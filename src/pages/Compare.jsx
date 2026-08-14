@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
 import GlowCard from '../components/GlowCard.jsx';
+import ProductHeader from '../components/ProductHeader.jsx';
 import {
   PRECISIONS, SliderControl
 } from '../modules/lab/common.jsx';
@@ -58,31 +59,24 @@ function formatGiB(value) {
 
 function PageHeader() {
   return (
-    <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-7 md:px-8">
-      <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-amber-500/10 blur-3xl" />
-      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Badge variant="amber">方案决策</Badge>
-            <Badge variant="slate">公式与结构对比</Badge>
+    <>
+      <ProductHeader
+        title="技术方案对比台"
+        subtitle="围绕同一推理目标，并排比较调度与组批、Dense/MoE 与权重量化方案；机制对照与公式结果用于建立判断边界，性能与精度结论必须回到具体模型、硬件和测试条件验证。"
+        accent="amber"
+        badges={[{ label: '方案决策', variant: 'amber' }, { label: '公式与结构对比' }]}
+      />
+      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+        {[
+          ['3', '调度策略'], ['2', '模型组织方式'], ['3', '权重精度'],
+        ].map(([value, label]) => (
+          <div key={label} className="rounded-xl border border-space-700/50 bg-space-950/40 px-3 py-2.5">
+            <div className="font-mono text-lg font-bold text-amber-300">{value}</div>
+            <div className="mt-0.5 text-space-500">{label}</div>
           </div>
-          <h1 className="text-2xl font-bold text-gradient md:text-3xl">技术方案对比台</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-space-400">
-            围绕同一推理目标，并排比较调度与组批、Dense/MoE 与权重量化方案；机制对照与公式结果用于建立判断边界，性能与精度结论必须回到具体模型、硬件和测试条件验证。
-          </p>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center text-xs">
-          {[
-            ['3', '调度策略'], ['2', '模型组织方式'], ['3', '权重精度'],
-          ].map(([value, label]) => (
-            <div key={label} className="rounded-xl border border-space-700/50 bg-space-950/40 px-3 py-2.5">
-              <div className="font-mono text-lg font-bold text-amber-300">{value}</div>
-              <div className="mt-0.5 text-space-500">{label}</div>
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
-    </div>
+    </>
   );
 }
 

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MemoryStick, Network, BarChart3 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
+import ProductHeader from '../components/ProductHeader.jsx';
 import {
   TABS, ARCHITECTURES, PRECISIONS,
   calcKVCache, calcModelWeight, getArchitectureKVHeads
@@ -97,11 +98,11 @@ export default function Lab() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-6 text-center md:px-8">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="relative"><h1 className="text-2xl font-bold text-gradient">参数实验室工作台</h1>
-        <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-space-400">调整模型结构、上下文长度、精度与并行配置，复算 KV Cache 容量和权重容量；页面不把未经压测的性能倍率当作结论。</p></div>
-      </div>
+      <ProductHeader
+        title="参数实验室工作台"
+        subtitle="调整模型结构、上下文长度、精度与并行配置，复算 KV Cache 容量和权重容量；页面不把未经压测的性能倍率当作结论。"
+        accent="emerald"
+      />
 
       <div className="flex justify-center overflow-x-auto pb-1">
         <div className="inline-flex min-w-max rounded-xl border border-space-700/60 bg-space-900/60 p-1">

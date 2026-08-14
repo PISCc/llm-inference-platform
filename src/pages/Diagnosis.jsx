@@ -7,6 +7,7 @@ import {
   Network, ListChecks, Info, ChevronRight, RotateCcw, Search
 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
+import ProductHeader from '../components/ProductHeader.jsx';
 import knowledgeData from '../data/knowledge.json';
 
 const STAGES = [
@@ -317,16 +318,15 @@ export default function Diagnosis() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-7 md:px-8">
-        <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-3 flex flex-wrap gap-2"><Badge variant="cyan">证据驱动诊断</Badge><Badge variant="slate">不由单一症状断言根因</Badge></div>
-            <h1 className="text-2xl font-bold text-gradient md:text-3xl">推理链路诊断台</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-space-400">根据 TTFT、TPOT、OOM、吞吐和启动现象选择已观察到的证据，沿请求调度、Prefill、KV Cache、Decode 与硬件通信逐层形成候选原因、验证步骤和处理方向。</p>
-          </div>
-          <div className="rounded-xl border border-space-700/50 bg-space-950/45 px-4 py-3 text-xs leading-relaxed text-space-400"><div className="flex items-center gap-2 font-medium text-space-200"><ScanSearch size={15} className="text-cyan-400" />诊断原则</div><div className="mt-1">先拆指标和阶段，再用观测证据验证；页面不输出未经验证的唯一根因。</div></div>
-        </div>
+      <ProductHeader
+        title="推理链路诊断台"
+        subtitle="根据 TTFT、TPOT、OOM、吞吐和启动现象选择已观察到的证据，沿请求调度、Prefill、KV Cache、Decode 与硬件通信逐层形成候选原因、验证步骤和处理方向。"
+        accent="cyan"
+        badges={[{ label: '证据驱动诊断', variant: 'cyan' }, { label: '不由单一症状断言根因' }]}
+      />
+      <div className="rounded-xl border border-space-700/50 bg-space-950/45 px-4 py-3 text-xs leading-relaxed text-space-400">
+        <div className="flex items-center justify-center gap-2 font-medium text-space-200"><ScanSearch size={15} className="text-cyan-400" />诊断原则</div>
+        <div className="mt-1 text-center">先拆指标和阶段，再用观测证据验证；页面不输出未经验证的唯一根因。</div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

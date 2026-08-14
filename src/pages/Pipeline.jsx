@@ -684,17 +684,12 @@ export default function Pipeline() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-6 text-center md:px-8">
-        <div className="pointer-events-none absolute -left-20 -top-24 h-52 w-52 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="relative">
-          <h1 className="text-headline text-gradient">推理流水线模拟器</h1>
-          <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-space-400">使用项目知识库中的问题与定义，观察演示分词、Prefill、KV Cache 分支和逐步 Decode；标识符与矩阵仅用于过程追踪。</p>
-          <div className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2">
-            <Badge variant="slate">6 个知识库案例</Badge>
-            <Badge variant="slate">可暂停与逐步推进</Badge>
-          </div>
-        </div>
-      </div>
+      <ProductHeader
+        title="推理流水线模拟器"
+        subtitle="使用项目知识库中的问题与定义，观察演示分词、Prefill、KV Cache 分支和逐步 Decode；标识符与矩阵仅用于过程追踪。"
+        accent="cyan"
+        badges={[{ label: '6 个知识库案例' }, { label: '可暂停与逐步推进' }]}
+      />
       {/* Stage Bar */}
       <div className="panel-shell rounded-xl border border-space-700/50 bg-space-900/50 p-4 backdrop-blur-md">
         <div className="overflow-x-auto pb-1">

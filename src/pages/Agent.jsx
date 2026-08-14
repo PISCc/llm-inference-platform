@@ -8,6 +8,7 @@ import {
   ShieldCheck, Sparkles, Workflow, X,
 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
+import ProductHeader from '../components/ProductHeader.jsx';
 import GlowCard from '../components/GlowCard.jsx';
 import knowledge from '../data/knowledge.json';
 
@@ -242,19 +243,26 @@ export default function Agent() {
   const clearHistory = () => { setHistory([]); setActiveHistoryId(null); };
 
   return <div className="space-y-6">
-    <section className="relative overflow-hidden rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.11] via-space-900/85 to-cyan-500/[0.06] p-6 md:p-8">
-      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-violet-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
-      <div className="relative grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-        <div>
-          <div className="flex flex-wrap items-center gap-2"><Badge variant="violet">M6 · AI 讲解智能体</Badge><span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />离线可用</span></div>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight text-space-100 md:text-4xl">AI 讲解智能体</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-space-400 md:text-base">基于本地推理知识库进行确定性检索，将已记录的定义、问题、步骤和主题分区整理成可核验的技术说明。</p>
-          <div className="mt-5 flex flex-wrap gap-2 text-xs text-space-500"><span className="inline-flex items-center gap-1.5"><ShieldCheck size={14} className="text-emerald-400" />不扩写知识库外结论</span><span className="inline-flex items-center gap-1.5"><FileSearch size={14} className="text-cyan-400" />显示检索依据与来源文件</span><span className="inline-flex items-center gap-1.5"><Link2 size={14} className="text-violet-400" />支持模块联动</span></div>
+    <ProductHeader
+      title="AI 讲解智能体"
+      subtitle="基于本地推理知识库进行确定性检索，将已记录的定义、问题、步骤和主题分区整理成可核验的技术说明。"
+      accent="violet"
+      badges={[
+        { label: '离线可用', variant: 'emerald' },
+        { label: '不扩写知识库外结论', variant: 'slate' },
+        { label: '显示检索依据与来源文件', variant: 'slate' },
+        { label: '支持模块联动', variant: 'slate' },
+      ]}
+    />
+    <div className="panel-shell rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.08] via-space-900/85 to-cyan-500/[0.05] p-4 md:p-5">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-500/15 text-violet-300"><Bot size={25} /></div>
+          <div><div className="text-sm font-semibold text-space-200">确定性本地检索</div><div className="mt-1 text-xs text-space-500">问题 → 主题 → 字段 → 回答</div></div>
         </div>
-        <div className="rounded-2xl border border-space-700/55 bg-space-950/45 p-4 backdrop-blur"><div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-500/15 text-violet-300"><Bot size={25} /></div><div><div className="text-sm font-semibold text-space-200">确定性本地检索</div><div className="mt-1 text-xs text-space-500">问题 → 主题 → 字段 → 回答</div></div></div><div className="mt-5 grid grid-cols-5 gap-1.5">{['输入', '检索', '抽取', '组装', '联动'].map((label, index) => <div key={label} className="text-center"><div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg border border-space-700/60 bg-space-900/70 text-[10px] font-semibold text-space-300">{index + 1}</div><div className="mt-1.5 text-[10px] text-space-600">{label}</div></div>)}</div></div>
+        <div className="grid grid-cols-5 gap-1.5 md:w-[min(100%,420px)]">{['输入', '检索', '抽取', '组装', '联动'].map((label, index) => <div key={label} className="text-center"><div className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg border border-space-700/60 bg-space-900/70 text-[10px] font-semibold text-space-300">{index + 1}</div><div className="mt-1.5 text-[10px] text-space-600">{label}</div></div>)}</div>
       </div>
-    </section>
+    </div>
 
     <div className="grid gap-3 sm:grid-cols-3"><Stat value={SEARCH_ENTRIES.length} label="技术主题" tone="cyan" /><Stat value={PRESETS.length} label="预设问题" tone="violet" /><Stat value="5" label="可联动模块" tone="emerald" /></div>
 
