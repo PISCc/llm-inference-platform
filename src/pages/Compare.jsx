@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Boxes, Binary, ArrowRight, ArrowUpRight, CheckCircle2,
-  AlertTriangle, Clock3, Database, Gauge, Info, Layers3, Pause, Play, RotateCcw, Route, Rows3, Workflow
+  AlertTriangle, Clock3, Database, Gauge, Layers3, Route, Rows3, Workflow
 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
 import GlowCard from '../components/GlowCard.jsx';
@@ -22,12 +22,6 @@ const SCHEDULING_STRATEGIES = [
   { id: 'continuous', name: 'Continuous Batching', english: 'Iteration-Level Scheduling', color: 'violet', summary: '在迭代边界动态重组批次，完成的请求可以及时退出。', workflow: ['请求入队', '按迭代重组', '执行一个迭代', '完成即退出'], admission: '在迭代边界加入或移除请求', prefill: 'Prefill 与 Decode 按迭代粒度共同参与调度', goal: '减少批内完成差异造成的空转', risk: '队列、抢占、公平性与 KV Cache 管理更复杂', fit: '在线服务、请求长度差异大、需要持续吞吐', panoramaId: 'cb' },
   { id: 'chunked', name: 'Chunked Prefill', english: 'Prefill Budgeting', color: 'amber', summary: '将长 Prefill 切成多个块，与 Decode 交错执行。', workflow: ['拆分长 Prefill', '分配本轮预算', '交错执行', '继续下一块'], admission: '可在分块边界插入新请求', prefill: '限制单轮 Prefill Token 数，降低对 Decode 的连续占用', goal: '缓解长 Prefill 对正在 Decode 请求的阻塞', risk: '分块大小需要调参，过小会增加调度开销', fit: '长上下文与 Decode 混合流量、需要控制迭代延迟', panoramaId: 'chunked' },
 ];
-
-const TRAFFIC_PROFILES = {
-  short: { label: '短请求为主', requests: ['S1', 'S2', 'S3', 'S4'], note: '长度接近，批次更容易保持整齐。' },
-  mixed: { label: '长短混合', requests: ['S1', 'L1', 'S2', 'S3'], note: '最能体现长请求对在线调度的影响。' },
-  long: { label: '长上下文为主', requests: ['L1', 'L2', 'S1', 'S2'], note: 'Prefill 工作量更大，调度预算更重要。' },
-};
 
 const PRECISION_DETAILS = {
   fp16: {
@@ -74,7 +68,7 @@ function PageHeader() {
           </div>
           <h1 className="text-2xl font-bold text-gradient md:text-3xl">技术方案对比台</h1>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed text-space-400">
-            围绕同一推理目标，并排比较调度与组批、Dense/MoE 与权重量化方案；机制演示与公式结果用于建立判断边界，性能与精度结论必须回到具体模型、硬件和测试条件验证。
+            围绕同一推理目标，并排比较调度与组批、Dense/MoE 与权重量化方案；机制对照与公式结果用于建立判断边界，性能与精度结论必须回到具体模型、硬件和测试条件验证。
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
@@ -123,74 +117,153 @@ function SectionTabs({ activeTab, setActiveTab }) {
   );
 }
 
-function SchedulingFlow({ strategy, step }) {
+function StrategyFlow({ strategy }) {
   return (
     <div className="grid gap-2 md:grid-cols-4">
-      {strategy.workflow.map((label, index) => {
-        const active = index === step;
-        const passed = index < step;
-        return (
-          <div key={label} className="relative">
-            <motion.div animate={{ opacity: active ? 1 : 0.72, y: active ? -2 : 0 }} className={'min-h-[74px] rounded-xl border p-3 transition-colors ' + (active ? strategy.color === 'cyan' ? 'border-cyan-400/55 bg-cyan-500/[0.12]' : strategy.color === 'violet' ? 'border-violet-400/55 bg-violet-500/[0.12]' : 'border-amber-400/55 bg-amber-500/[0.12]' : passed ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-space-700/45 bg-space-950/35')}>
-              <div className="flex items-center justify-between gap-2"><span className="font-mono text-[10px] text-space-600">STEP {String(index + 1).padStart(2, '0')}</span>{active && <span className={'h-1.5 w-1.5 animate-pulse rounded-full ' + (strategy.color === 'cyan' ? 'bg-cyan-300' : strategy.color === 'violet' ? 'bg-violet-300' : 'bg-amber-300')} />}</div>
-              <div className="mt-3 text-sm font-semibold text-space-200">{label}</div>
-            </motion.div>
-            {index < strategy.workflow.length - 1 && <ArrowRight size={14} className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-space-600 md:block" />}
+      {strategy.workflow.map((label, index) => (
+        <div key={label} className="relative">
+          <div className={
+            'min-h-[76px] rounded-xl border p-3 ' +
+            (strategy.color === 'cyan'
+              ? 'border-cyan-500/25 bg-cyan-500/[0.06]'
+              : strategy.color === 'violet'
+                ? 'border-violet-500/25 bg-violet-500/[0.06]'
+                : 'border-amber-500/25 bg-amber-500/[0.06]')
+          }>
+            <span className="font-mono text-[10px] text-space-600">STEP {String(index + 1).padStart(2, '0')}</span>
+            <div className="mt-3 text-sm font-semibold text-space-200">{label}</div>
           </div>
-        );
-      })}
+          {index < strategy.workflow.length - 1 && (
+            <ArrowRight size={14} className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-space-600 md:block" />
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
 function SchedulingComparison({ navigate }) {
   const [selected, setSelected] = useState('continuous');
-  const [traffic, setTraffic] = useState('mixed');
-  const [running, setRunning] = useState(false);
-  const [step, setStep] = useState(0);
   const strategy = SCHEDULING_STRATEGIES.find((item) => item.id === selected) || SCHEDULING_STRATEGIES[1];
-  const profile = TRAFFIC_PROFILES[traffic];
 
-  useEffect(() => {
-    if (!running) return undefined;
-    const timer = window.setInterval(() => setStep((current) => (current + 1) % strategy.workflow.length), 1100);
-    return () => window.clearInterval(timer);
-  }, [running, strategy.workflow.length]);
-
-  useEffect(() => { setStep(0); }, [selected, traffic]);
-
-  const activeRequest = profile.requests[step % profile.requests.length];
-  const currentState = strategy.workflow[step];
+  const detailCards = [
+    { label: '新请求准入', value: strategy.admission, icon: Route, color: 'text-cyan-400' },
+    { label: 'Prefill 处理', value: strategy.prefill, icon: Layers3, color: 'text-violet-400' },
+    { label: '主要目标', value: strategy.goal, icon: Gauge, color: 'text-emerald-400' },
+    { label: '典型风险', value: strategy.risk, icon: AlertTriangle, color: 'text-amber-400' },
+  ];
 
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
         {SCHEDULING_STRATEGIES.map((item) => {
           const active = selected === item.id;
+          const activeClass = item.color === 'cyan'
+            ? 'border-cyan-400/45 bg-cyan-500/[0.09] shadow-[0_0_24px_rgba(34,211,238,0.07)]'
+            : item.color === 'violet'
+              ? 'border-violet-400/45 bg-violet-500/[0.09] shadow-[0_0_24px_rgba(167,139,250,0.07)]'
+              : 'border-amber-400/45 bg-amber-500/[0.09] shadow-[0_0_24px_rgba(251,191,36,0.07)]';
+          const dotClass = item.color === 'cyan' ? 'bg-cyan-300' : item.color === 'violet' ? 'bg-violet-300' : 'bg-amber-300';
           return (
-            <button key={item.id} type="button" aria-pressed={active} onClick={() => setSelected(item.id)} className={'group rounded-2xl border p-4 text-left transition-all ' + (active ? item.color === 'cyan' ? 'border-cyan-400/45 bg-cyan-500/[0.09] shadow-[0_0_24px_rgba(34,211,238,0.07)]' : item.color === 'violet' ? 'border-violet-400/45 bg-violet-500/[0.09] shadow-[0_0_24px_rgba(167,139,250,0.07)]' : 'border-amber-400/45 bg-amber-500/[0.09] shadow-[0_0_24px_rgba(251,191,36,0.07)]' : 'border-space-700/50 bg-space-900/45 hover:border-space-600 hover:bg-space-900/70')}>
-              <div className="flex items-start justify-between gap-3"><div><span className="font-mono text-[10px] uppercase tracking-wider text-space-600">{item.english}</span><h3 className="mt-1.5 text-sm font-semibold text-space-100">{item.name}</h3></div><span className={'mt-1 h-2 w-2 rounded-full ' + (active ? item.color === 'cyan' ? 'bg-cyan-300' : item.color === 'violet' ? 'bg-violet-300' : 'bg-amber-300' : 'bg-space-700')} /></div>
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setSelected(item.id)}
+              className={'group rounded-2xl border p-4 text-left transition-all ' + (active ? activeClass : 'border-space-700/50 bg-space-900/45 hover:border-space-600 hover:bg-space-900/70')}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-space-600">{item.english}</span>
+                  <h3 className="mt-1.5 text-sm font-semibold text-space-100">{item.name}</h3>
+                </div>
+                <span className={'mt-1 h-2 w-2 rounded-full ' + (active ? dotClass : 'bg-space-700')} />
+              </div>
               <p className="mt-3 text-xs leading-relaxed text-space-500">{item.summary}</p>
             </button>
           );
         })}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
-        <div className="space-y-4 rounded-2xl border border-space-700/50 bg-space-900/55 p-4">
-          <div><h2 className="flex items-center gap-2 font-semibold text-space-100"><Workflow size={17} className="text-cyan-400" />演示条件</h2><p className="mt-1 text-xs leading-relaxed text-space-500">只改变调度策略，使用同一组请求流观察准入、执行与退出边界。</p></div>
-          <div><div className="mb-2 text-[10px] uppercase tracking-wider text-space-600">请求流量</div><div className="grid gap-2">{Object.entries(TRAFFIC_PROFILES).map(([key, value]) => <button key={key} type="button" aria-pressed={traffic === key} onClick={() => setTraffic(key)} className={'rounded-lg border px-3 py-2 text-left transition ' + (traffic === key ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-200' : 'border-space-700/45 bg-space-950/35 text-space-500 hover:border-space-600 hover:text-space-300')}><span className="block text-xs font-medium">{value.label}</span><span className="mt-1 block text-[10px] text-space-600">{value.requests.join(' · ')} · S=短 / L=长</span></button>)}</div></div>
-          <div className="rounded-xl border border-space-700/45 bg-space-950/35 p-3"><div className="flex items-center justify-between gap-2 text-xs text-space-400"><span>当前阶段</span><span className="font-mono text-cyan-300">{currentState}</span></div><div className="mt-2 flex items-center justify-between gap-2 text-xs text-space-500"><span>活动请求</span><span className="font-mono text-space-200">{activeRequest}</span></div><p className="mt-2 text-[11px] leading-relaxed text-space-600">{profile.note}</p></div>
-          <div className="flex gap-2"><button type="button" onClick={() => setRunning((value) => !value)} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-300 transition hover:bg-cyan-500/20">{running ? <Pause size={13} /> : <Play size={13} />}{running ? '暂停演示' : '开始演示'}</button><button type="button" onClick={() => { setRunning(false); setStep(0); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-xs text-space-300 transition hover:border-space-500"><RotateCcw size={13} />重置</button></div>
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.05] p-3 text-[11px] leading-relaxed text-space-500"><Info size={13} className="mr-1 inline text-cyan-400" />动画仅展示机制边界，不代表真实 Scheduler、Router 或生产压测输出。</div>
+      <div className="rounded-2xl border border-space-700/50 bg-space-900/50 p-5 md:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={strategy.color}>{strategy.name}</Badge>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-space-600">{strategy.english}</span>
+            </div>
+            <h2 className="mt-3 text-xl font-bold text-space-100">{strategy.summary}</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-space-400">
+              调度策略决定请求何时进入执行批次、何时释放批次位置，以及 Prefill 与 Decode 如何竞争每轮执行预算。
+            </p>
+          </div>
+          <Clock3 size={32} className={strategy.color === 'cyan' ? 'text-cyan-400/60' : strategy.color === 'violet' ? 'text-violet-400/60' : 'text-amber-400/60'} />
         </div>
 
-        <div className="space-y-4"><div className="flex flex-col gap-3 rounded-2xl border border-space-700/50 bg-space-900/50 p-5 md:flex-row md:items-start md:justify-between"><div><div className="flex flex-wrap items-center gap-2"><Badge variant={strategy.color}>{strategy.name}</Badge><span className="font-mono text-[10px] uppercase tracking-wider text-space-600">{strategy.english}</span></div><h2 className="mt-3 text-xl font-bold text-space-100">{strategy.summary}</h2><p className="mt-2 max-w-2xl text-sm leading-relaxed text-space-400">调度器决定请求何时进入执行批次、何时让出资源，以及长 Prefill 如何与 Decode 竞争本轮预算。</p></div><Clock3 size={30} className={strategy.color === 'cyan' ? 'text-cyan-400/60' : strategy.color === 'violet' ? 'text-violet-400/60' : 'text-amber-400/60'} /></div><SchedulingFlow strategy={strategy} step={step} /><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-space-700/45 bg-space-900/45 p-4"><div className="text-[10px] uppercase tracking-wider text-space-600">本轮观察</div><div className="mt-2 text-sm font-semibold text-space-200">{activeRequest} · {currentState}</div><p className="mt-1 text-xs leading-relaxed text-space-500">请求在当前调度阶段的状态随演示步进变化。</p></div><div className="rounded-xl border border-space-700/45 bg-space-900/45 p-4"><div className="text-[10px] uppercase tracking-wider text-space-600">判断重点</div><div className="mt-2 text-sm font-semibold text-space-200">{strategy.goal}</div><p className="mt-1 text-xs leading-relaxed text-space-500">这是策略设计目标，不是固定的线上性能承诺。</p></div></div></div>
+        <div className="mt-6">
+          <div className="mb-3 flex items-center gap-2 text-xs font-medium text-space-400">
+            <Workflow size={15} className="text-cyan-400" />处理流程
+          </div>
+          <StrategyFlow strategy={strategy} />
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {detailCards.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="rounded-xl border border-space-700/45 bg-space-950/35 p-4">
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-space-600">
+                  <Icon size={14} className={item.color} />{item.label}
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-space-300">{item.value}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4">
+          <div className="text-[10px] uppercase tracking-wider text-emerald-400/70">适用条件</div>
+          <p className="mt-2 text-sm leading-relaxed text-space-300">{strategy.fit}</p>
+        </div>
       </div>
 
-      <div className="rounded-2xl border border-space-700/50 bg-space-900/45 p-4 md:p-5"><div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><h2 className="flex items-center gap-2 font-semibold text-space-100"><Rows3 size={17} className="text-cyan-400" />方案对照</h2><p className="mt-1 text-xs leading-relaxed text-space-500">同一请求目标下，比较三种调度边界；不把机制差异直接等同于固定吞吐或延迟提升。</p></div><Badge variant="slate">机制级比较</Badge></div><div className="mt-4 overflow-x-auto rounded-xl border border-space-700/45"><table className="min-w-[760px] w-full border-collapse text-left text-xs"><thead><tr className="border-b border-space-700/45 bg-space-950/45"><th className="w-32 px-3 py-3 font-medium text-space-500">判断维度</th>{SCHEDULING_STRATEGIES.map((item) => <th key={item.id} className="px-3 py-3 font-medium text-space-200">{item.name}</th>)}</tr></thead><tbody>{[['新请求准入', 'admission'], ['Prefill 处理', 'prefill'], ['主要目标', 'goal'], ['典型风险', 'risk'], ['适用条件', 'fit']].map(([label, key]) => <tr key={key} className="border-b border-space-800/70 last:border-0"><th className="px-3 py-3 align-top font-medium text-space-500">{label}</th>{SCHEDULING_STRATEGIES.map((item) => <td key={item.id} className="px-3 py-3 align-top leading-relaxed text-space-400">{item[key]}</td>)}</tr>)}</tbody></table></div></div>
+      <div className="rounded-2xl border border-space-700/50 bg-space-900/45 p-4 md:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 font-semibold text-space-100"><Rows3 size={17} className="text-cyan-400" />完整方案对照</h2>
+            <p className="mt-1 text-xs leading-relaxed text-space-500">比较三种方案的调度边界，不把机制差异直接等同于固定吞吐或延迟提升。</p>
+          </div>
+          <Badge variant="slate">机制级比较</Badge>
+        </div>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-space-700/45">
+          <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-space-700/45 bg-space-950/45">
+                <th className="w-32 px-3 py-3 font-medium text-space-500">判断维度</th>
+                {SCHEDULING_STRATEGIES.map((item) => <th key={item.id} className="px-3 py-3 font-medium text-space-200">{item.name}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {[['新请求准入', 'admission'], ['Prefill 处理', 'prefill'], ['主要目标', 'goal'], ['典型风险', 'risk'], ['适用条件', 'fit']].map(([label, key]) => (
+                <tr key={key} className="border-b border-space-800/70 last:border-0">
+                  <th className="px-3 py-3 align-top font-medium text-space-500">{label}</th>
+                  {SCHEDULING_STRATEGIES.map((item) => <td key={item.id} className="px-3 py-3 align-top leading-relaxed text-space-400">{item[key]}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] p-4 md:flex-row md:items-center md:justify-between"><div className="flex items-start gap-3"><CheckCircle2 size={17} className="mt-0.5 shrink-0 text-cyan-400" /><p className="text-sm leading-relaxed text-space-300">选择策略时，应同时核对请求长度分布、TTFT/SLO 目标、最大批大小、Prefill 预算、显存余量与调度开销；最终结论需要在目标模型和硬件上实测。</p></div><div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => navigate('/panorama', { state: { moduleId: strategy.panoramaId } })} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/20">查看对应全景条目 <ArrowUpRight size={14} /></button><button type="button" onClick={() => navigate('/diagnosis')} className="inline-flex items-center gap-1.5 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-sm text-space-300 transition hover:border-space-500">进入链路诊断 <ArrowRight size={14} /></button></div></div>
+      <div className="flex flex-col gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] p-4 md:flex-row md:items-center md:justify-between">
+        <p className="text-sm leading-relaxed text-space-300">
+          选择策略时，应同时核对请求长度分布、TTFT/SLO 目标、最大批大小、Prefill 预算、显存余量与调度开销；最终结论需要在目标模型和硬件上实测。
+        </p>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button type="button" onClick={() => navigate('/panorama', { state: { moduleId: strategy.panoramaId } })} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/20">查看对应全景条目 <ArrowUpRight size={14} /></button>
+          <button type="button" onClick={() => navigate('/diagnosis')} className="inline-flex items-center gap-1.5 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-sm text-space-300 transition hover:border-space-500">进入链路诊断 <ArrowRight size={14} /></button>
+        </div>
+      </div>
     </div>
   );
 }
