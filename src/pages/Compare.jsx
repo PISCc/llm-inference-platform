@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Boxes, Binary, ArrowRight, ArrowUpRight, CheckCircle2,
-  AlertTriangle, Clock3, Database, Gauge, Layers3, Route, Rows3, Workflow
+  AlertTriangle, Database, Gauge, Layers3, Route, Rows3, Workflow
 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
-import GlowCard from '../components/GlowCard.jsx';
 import ProductHeader from '../components/ProductHeader.jsx';
-import {
-  PRECISIONS, SliderControl
-} from '../modules/lab/common.jsx';
+import { PRECISIONS, SliderControl } from '../modules/lab/common.jsx';
 
 const TABS = [
   { id: 'scheduling', label: '调度与组批', icon: Layers3, accent: 'cyan' },
@@ -19,9 +16,73 @@ const TABS = [
 ];
 
 const SCHEDULING_STRATEGIES = [
-  { id: 'static', name: '静态批处理', english: 'Static Batching', color: 'cyan', summary: '先凑齐固定批次，再以统一轮次执行请求。', workflow: ['收集请求', '组成固定批', '整批执行', '批次结束'], admission: '批次开始后不再加入新请求', prefill: '长 Prefill 会占用整批执行窗口', goal: '降低实现复杂度与动态调度开销', risk: '短请求可能等待，长请求可能拖慢同批请求', fit: '离线批量任务、请求长度接近、延迟要求宽松', panoramaId: 'scheduler' },
-  { id: 'continuous', name: 'Continuous Batching', english: 'Iteration-Level Scheduling', color: 'violet', summary: '在迭代边界动态重组批次，完成的请求可以及时退出。', workflow: ['请求入队', '按迭代重组', '执行一个迭代', '完成即退出'], admission: '在迭代边界加入或移除请求', prefill: 'Prefill 与 Decode 按迭代粒度共同参与调度', goal: '减少批内完成差异造成的空转', risk: '队列、抢占、公平性与 KV Cache 管理更复杂', fit: '在线服务、请求长度差异大、需要持续吞吐', panoramaId: 'cb' },
-  { id: 'chunked', name: 'Chunked Prefill', english: 'Prefill Budgeting', color: 'amber', summary: '将长 Prefill 切成多个块，与 Decode 交错执行。', workflow: ['拆分长 Prefill', '分配本轮预算', '交错执行', '继续下一块'], admission: '可在分块边界插入新请求', prefill: '限制单轮 Prefill Token 数，降低对 Decode 的连续占用', goal: '缓解长 Prefill 对正在 Decode 请求的阻塞', risk: '分块大小需要调参，过小会增加调度开销', fit: '长上下文与 Decode 混合流量、需要控制迭代延迟', panoramaId: 'chunked' },
+  {
+    id: 'static',
+    name: '静态批处理',
+    english: 'Static Batching',
+    color: 'cyan',
+    summary: '先组成固定批次，再按统一轮次完成整批请求。',
+    workflow: ['收集请求', '组成固定批', '整批执行', '批次结束'],
+    advantage: '实现简单、批次边界清晰，便于控制离线任务的输入规模。',
+    limitation: '需要等待成批；批内长请求会延长其他请求的完成时间。',
+    fit: '离线批量任务、请求长度接近、端到端延迟要求宽松。',
+    admission: '批次开始后不再加入新请求。',
+    prefill: '长 Prefill 会占用整批执行窗口。',
+    panoramaId: 'scheduler',
+  },
+  {
+    id: 'continuous',
+    name: 'Continuous Batching',
+    english: 'Iteration-Level Scheduling',
+    color: 'violet',
+    summary: '在迭代边界动态重组批次，已完成请求及时退出。',
+    workflow: ['请求入队', '按迭代重组', '执行一个迭代', '完成即退出'],
+    advantage: '请求可动态进入和退出批次，减少已完成槽位继续空转。',
+    limitation: '队列、公平性、抢占与 KV Cache 管理更复杂，依赖成熟运行时。',
+    fit: '在线服务、请求长度差异较大、需要持续处理动态流量。',
+    admission: '在迭代边界加入或移除请求。',
+    prefill: 'Prefill 与 Decode 按迭代粒度共同参与调度。',
+    panoramaId: 'cb',
+  },
+  {
+    id: 'chunked',
+    name: 'Chunked Prefill',
+    english: 'Prefill Budgeting',
+    color: 'amber',
+    summary: '将长 Prefill 划分为多个块，与 Decode 交错执行。',
+    workflow: ['拆分长 Prefill', '分配本轮预算', '交错执行', '继续下一块'],
+    advantage: '限制长 Prefill 的单轮占用，使 Decode 请求更容易获得执行机会。',
+    limitation: '分块大小和预算需要调参；分块过细会增加调度与切换开销。',
+    fit: '长上下文与 Decode 混合流量、需要控制迭代延迟或尾延迟。',
+    admission: '可在分块边界插入新请求。',
+    prefill: '限制单轮 Prefill Token 数，降低对 Decode 的连续占用。',
+    panoramaId: 'chunked',
+  },
+];
+
+const MODEL_ORGANIZATION_DETAILS = [
+  {
+    id: 'dense',
+    name: 'Dense',
+    color: 'cyan',
+    title: '固定激活全部参数',
+    advantage: '计算路径固定，不需要 Token 路由与专家间 All-to-All，执行与部署边界更直接。',
+    limitation: '每个 Token 都激活全部参数；模型扩大时，计算量与权重容量同步增加。',
+    fit: '模型规模可控、硬件拓扑较简单，优先稳定性、兼容性与可预测执行路径。',
+    validation: '核对模型是否能在目标显存与并行配置下容纳，并实测目标批次和序列长度。',
+    panoramaId: 'dense',
+  },
+  {
+    id: 'moe',
+    name: 'MoE',
+    color: 'violet',
+    title: '按路由稀疏激活专家',
+    advantage: '总参数可以大于单 Token 激活参数，在扩大专家容量时保留稀疏激活路径。',
+    limitation: '引入 Router、负载均衡、专家放置和跨设备通信，热点专家可能成为瓶颈。',
+    fit: '模型本身采用 MoE，且部署环境具备专家并行、通信优化和负载监控能力。',
+    validation: '核对专家负载分布、All-to-All 占比、跨卡拓扑以及目标流量下的尾延迟。',
+    panoramaId: 'moe',
+  },
 ];
 
 const PRECISION_DETAILS = {
@@ -30,6 +91,9 @@ const PRECISION_DETAILS = {
     bits: 16,
     name: 'FP16',
     storage: '2 字节/参数',
+    advantage: '算子与框架支持通常更完整，适合作为容量、精度和性能验证基线。',
+    limitation: '纯权重容量最高，对显存余量和跨卡分片的要求更高。',
+    fit: '显存充足、优先兼容性与基线复现，或量化收益尚未完成验证。',
     requirement: '通常可直接承载半精度权重，仍需匹配硬件和推理引擎。',
     risk: '作为容量基线；不代表模型的训练原始精度。',
   },
@@ -38,6 +102,9 @@ const PRECISION_DETAILS = {
     bits: 8,
     name: 'INT8',
     storage: '1 字节/参数',
+    advantage: '纯权重理论容量为 FP16 的一半，容量压缩与实现复杂度相对均衡。',
+    limitation: '需要量化尺度和适配计算核；精度与速度收益依赖具体量化方案和硬件。',
+    fit: '希望降低权重容量，同时保留较充分精度验证空间的生产部署。',
     requirement: '需要量化尺度、受支持的计算核，以及与目标硬件匹配的实现。',
     risk: '精度影响必须在目标任务和量化方案下评测。',
   },
@@ -46,10 +113,19 @@ const PRECISION_DETAILS = {
     bits: 4,
     name: 'INT4',
     storage: '0.5 字节/参数',
+    advantage: '纯权重理论容量为 FP16 的四分之一，更适合显存约束明显的部署。',
+    limitation: '元数据、校准、算子支持和目标任务精度风险更突出。',
+    fit: '显存是主要约束，并且具备目标任务评测、校准数据与量化算子支持。',
     requirement: '通常包含分组、尺度或零点等元数据，实际文件会高于纯权重下界。',
     risk: '压缩更强，精度、校准和算子支持风险也更需要单独验证。',
   },
 };
+
+const TRADEOFF_ITEMS = [
+  { key: 'advantage', label: '核心优势', icon: CheckCircle2, border: 'border-emerald-500/20', bg: 'bg-emerald-500/[0.055]', text: 'text-emerald-300' },
+  { key: 'limitation', label: '主要局限', icon: AlertTriangle, border: 'border-amber-500/20', bg: 'bg-amber-500/[0.055]', text: 'text-amber-300' },
+  { key: 'fit', label: '适用场景', icon: Route, border: 'border-cyan-500/20', bg: 'bg-cyan-500/[0.055]', text: 'text-cyan-300' },
+];
 
 function formatGiB(value) {
   if (value >= 100) return value.toFixed(0);
@@ -57,14 +133,69 @@ function formatGiB(value) {
   return value.toFixed(2);
 }
 
+function TradeoffSummary({ advantage, limitation, fit, compact = false }) {
+  const content = { advantage, limitation, fit };
+  return (
+    <div className={`grid gap-2 ${compact ? '' : 'md:grid-cols-3'}`}>
+      {TRADEOFF_ITEMS.map((item) => {
+        const Icon = item.icon;
+        return (
+          <div key={item.key} className={`rounded-xl border ${item.border} ${item.bg} ${compact ? 'p-3' : 'p-4'}`}>
+            <div className={`flex items-center gap-1.5 text-[10px] font-semibold tracking-wide ${item.text}`}>
+              <Icon size={compact ? 13 : 14} />{item.label}
+            </div>
+            <p className={`mt-2 leading-relaxed text-space-300 ${compact ? 'text-[11px]' : 'text-sm'}`}>{content[item.key]}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ComparisonTable({ title, description, columns, rows, accent = 'cyan', badge = '完整对照' }) {
+  const iconClass = accent === 'violet' ? 'text-violet-400' : accent === 'amber' ? 'text-amber-400' : 'text-cyan-400';
+  return (
+    <div className="rounded-2xl border border-space-700/50 bg-space-900/45 p-4 md:p-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 font-semibold text-space-100"><Rows3 size={17} className={iconClass} />{title}</h2>
+          <p className="mt-1 text-xs leading-relaxed text-space-500">{description}</p>
+        </div>
+        <Badge variant="slate">{badge}</Badge>
+      </div>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-space-700/45">
+        <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+          <thead>
+            <tr className="border-b border-space-700/45 bg-space-950/45">
+              <th className="w-32 px-3 py-3 font-medium text-space-500">判断维度</th>
+              {columns.map((column) => <th key={column.id} className="px-3 py-3 font-medium text-space-200">{column.name}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const labelClass = row.key === 'advantage' ? 'text-emerald-300' : row.key === 'limitation' ? 'text-amber-300' : row.key === 'fit' ? 'text-cyan-300' : 'text-space-500';
+              return (
+                <tr key={row.key} className="border-b border-space-800/70 last:border-0">
+                  <th className={`px-3 py-3 align-top font-medium ${labelClass}`}>{row.label}</th>
+                  {columns.map((column) => <td key={column.id} className="px-3 py-3 align-top leading-relaxed text-space-400">{column[row.key]}</td>)}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function PageHeader() {
   return (
     <>
       <ProductHeader
         title="技术方案对比台"
-        subtitle="围绕同一推理目标，并排比较调度与组批、Dense/MoE 与权重量化方案；机制对照与公式结果用于建立判断边界，性能与精度结论必须回到具体模型、硬件和测试条件验证。"
+        subtitle="围绕同一推理目标，直接比较不同方案的核心优势、主要局限与适用场景，并保留机制、公式和验证边界。"
         accent="amber"
-        badges={[{ label: '方案决策', variant: 'amber' }, { label: '公式与结构对比' }]}
+        badges={[{ label: '优势 · 局限 · 适用场景', variant: 'amber' }, { label: '机制与验证边界' }]}
       />
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         {[
@@ -96,10 +227,9 @@ function SectionTabs({ activeTab, setActiveTab }) {
             <button
               key={tab.id}
               type="button"
+              aria-pressed={active}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
-                active ? `${activeColor} bg-space-800/85` : 'border-transparent text-space-500 hover:text-space-200'
-              }`}
+              className={`relative flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all ${active ? `${activeColor} bg-space-800/85` : 'border-transparent text-space-500 hover:text-space-200'}`}
             >
               <Icon size={15} />
               {tab.label}
@@ -116,20 +246,11 @@ function StrategyFlow({ strategy }) {
     <div className="grid gap-2 md:grid-cols-4">
       {strategy.workflow.map((label, index) => (
         <div key={label} className="relative">
-          <div className={
-            'min-h-[76px] rounded-xl border p-3 ' +
-            (strategy.color === 'cyan'
-              ? 'border-cyan-500/25 bg-cyan-500/[0.06]'
-              : strategy.color === 'violet'
-                ? 'border-violet-500/25 bg-violet-500/[0.06]'
-                : 'border-amber-500/25 bg-amber-500/[0.06]')
-          }>
+          <div className={'min-h-[76px] rounded-xl border p-3 ' + (strategy.color === 'cyan' ? 'border-cyan-500/25 bg-cyan-500/[0.06]' : strategy.color === 'violet' ? 'border-violet-500/25 bg-violet-500/[0.06]' : 'border-amber-500/25 bg-amber-500/[0.06]')}>
             <span className="font-mono text-[10px] text-space-600">STEP {String(index + 1).padStart(2, '0')}</span>
             <div className="mt-3 text-sm font-semibold text-space-200">{label}</div>
           </div>
-          {index < strategy.workflow.length - 1 && (
-            <ArrowRight size={14} className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-space-600 md:block" />
-          )}
+          {index < strategy.workflow.length - 1 && <ArrowRight size={14} className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-space-600 md:block" />}
         </div>
       ))}
     </div>
@@ -140,123 +261,59 @@ function SchedulingComparison({ navigate }) {
   const [selected, setSelected] = useState('continuous');
   const strategy = SCHEDULING_STRATEGIES.find((item) => item.id === selected) || SCHEDULING_STRATEGIES[1];
 
-  const detailCards = [
-    { label: '新请求准入', value: strategy.admission, icon: Route, color: 'text-cyan-400' },
-    { label: 'Prefill 处理', value: strategy.prefill, icon: Layers3, color: 'text-violet-400' },
-    { label: '主要目标', value: strategy.goal, icon: Gauge, color: 'text-emerald-400' },
-    { label: '典型风险', value: strategy.risk, icon: AlertTriangle, color: 'text-amber-400' },
-  ];
-
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-3">
-        {SCHEDULING_STRATEGIES.map((item) => {
-          const active = selected === item.id;
-          const activeClass = item.color === 'cyan'
-            ? 'border-cyan-400/45 bg-cyan-500/[0.09] shadow-[0_0_24px_rgba(34,211,238,0.07)]'
-            : item.color === 'violet'
-              ? 'border-violet-400/45 bg-violet-500/[0.09] shadow-[0_0_24px_rgba(167,139,250,0.07)]'
-              : 'border-amber-400/45 bg-amber-500/[0.09] shadow-[0_0_24px_rgba(251,191,36,0.07)]';
-          const dotClass = item.color === 'cyan' ? 'bg-cyan-300' : item.color === 'violet' ? 'bg-violet-300' : 'bg-amber-300';
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setSelected(item.id)}
-              className={'group rounded-2xl border p-4 text-left transition-all ' + (active ? activeClass : 'border-space-700/50 bg-space-900/45 hover:border-space-600 hover:bg-space-900/70')}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-space-600">{item.english}</span>
-                  <h3 className="mt-1.5 text-sm font-semibold text-space-100">{item.name}</h3>
-                </div>
-                <span className={'mt-1 h-2 w-2 rounded-full ' + (active ? dotClass : 'bg-space-700')} />
-              </div>
-              <p className="mt-3 text-xs leading-relaxed text-space-500">{item.summary}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="rounded-2xl border border-space-700/50 bg-space-900/50 p-5 md:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={strategy.color}>{strategy.name}</Badge>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-space-600">{strategy.english}</span>
-            </div>
-            <h2 className="mt-3 text-xl font-bold text-space-100">{strategy.summary}</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-space-400">
-              调度策略决定请求何时进入执行批次、何时释放批次位置，以及 Prefill 与 Decode 如何竞争每轮执行预算。
-            </p>
-          </div>
-          <Clock3 size={32} className={strategy.color === 'cyan' ? 'text-cyan-400/60' : strategy.color === 'violet' ? 'text-violet-400/60' : 'text-amber-400/60'} />
+      <div>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div><h2 className="font-semibold text-space-100">先看方案权衡</h2><p className="mt-1 text-xs text-space-500">点击方案查看机制依据；优势、局限和适用场景始终作为一级信息展示。</p></div>
+          <Badge variant="cyan">直接选型</Badge>
         </div>
-
-        <div className="mt-6">
-          <div className="mb-3 flex items-center gap-2 text-xs font-medium text-space-400">
-            <Workflow size={15} className="text-cyan-400" />处理流程
-          </div>
-          <StrategyFlow strategy={strategy} />
-        </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {detailCards.map((item) => {
-            const Icon = item.icon;
+        <div className="grid gap-3 md:grid-cols-3">
+          {SCHEDULING_STRATEGIES.map((item) => {
+            const active = selected === item.id;
+            const activeClass = item.color === 'cyan' ? 'border-cyan-400/45 bg-cyan-500/[0.09]' : item.color === 'violet' ? 'border-violet-400/45 bg-violet-500/[0.09]' : 'border-amber-400/45 bg-amber-500/[0.09]';
             return (
-              <div key={item.label} className="rounded-xl border border-space-700/45 bg-space-950/35 p-4">
-                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-space-600">
-                  <Icon size={14} className={item.color} />{item.label}
+              <button key={item.id} type="button" aria-pressed={active} onClick={() => setSelected(item.id)} className={`rounded-2xl border p-4 text-left transition-all ${active ? `${activeClass} shadow-[0_0_24px_rgba(34,211,238,0.06)]` : 'border-space-700/50 bg-space-900/45 hover:border-space-600 hover:bg-space-900/70'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div><span className="font-mono text-[10px] uppercase tracking-wider text-space-600">{item.english}</span><h3 className="mt-1.5 text-sm font-semibold text-space-100">{item.name}</h3></div>
+                  <span className={`mt-1 rounded-full border px-2 py-0.5 text-[10px] ${active ? 'border-space-500/60 text-space-200' : 'border-space-700 text-space-600'}`}>{active ? '当前方案' : '点击切换'}</span>
                 </div>
-                <p className="mt-2 text-sm leading-relaxed text-space-300">{item.value}</p>
-              </div>
+                <p className="mt-3 text-xs leading-relaxed text-space-500">{item.summary}</p>
+                <div className="mt-4"><TradeoffSummary advantage={item.advantage} limitation={item.limitation} fit={item.fit} compact /></div>
+              </button>
             );
           })}
         </div>
+      </div>
 
-        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4">
-          <div className="text-[10px] uppercase tracking-wider text-emerald-400/70">适用条件</div>
-          <p className="mt-2 text-sm leading-relaxed text-space-300">{strategy.fit}</p>
+      <div className="rounded-2xl border border-space-700/50 bg-space-900/50 p-5 md:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div><div className="flex flex-wrap items-center gap-2"><Badge variant={strategy.color}>{strategy.name}</Badge><span className="font-mono text-[10px] uppercase tracking-wider text-space-600">机制依据</span></div><h2 className="mt-3 text-xl font-bold text-space-100">{strategy.summary}</h2></div>
+          <Workflow size={30} className={strategy.color === 'cyan' ? 'text-cyan-400/60' : strategy.color === 'violet' ? 'text-violet-400/60' : 'text-amber-400/60'} />
+        </div>
+        <div className="mt-5"><StrategyFlow strategy={strategy} /></div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-space-700/45 bg-space-950/35 p-4"><div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-cyan-400/75"><Route size={14} />新请求准入</div><p className="mt-2 text-sm leading-relaxed text-space-300">{strategy.admission}</p></div>
+          <div className="rounded-xl border border-space-700/45 bg-space-950/35 p-4"><div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-violet-400/75"><Layers3 size={14} />Prefill 处理</div><p className="mt-2 text-sm leading-relaxed text-space-300">{strategy.prefill}</p></div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-space-700/50 bg-space-900/45 p-4 md:p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 font-semibold text-space-100"><Rows3 size={17} className="text-cyan-400" />完整方案对照</h2>
-            <p className="mt-1 text-xs leading-relaxed text-space-500">比较三种方案的调度边界，不把机制差异直接等同于固定吞吐或延迟提升。</p>
-          </div>
-          <Badge variant="slate">机制级比较</Badge>
-        </div>
-        <div className="mt-4 overflow-x-auto rounded-xl border border-space-700/45">
-          <table className="w-full min-w-[760px] border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-space-700/45 bg-space-950/45">
-                <th className="w-32 px-3 py-3 font-medium text-space-500">判断维度</th>
-                {SCHEDULING_STRATEGIES.map((item) => <th key={item.id} className="px-3 py-3 font-medium text-space-200">{item.name}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {[['新请求准入', 'admission'], ['Prefill 处理', 'prefill'], ['主要目标', 'goal'], ['典型风险', 'risk'], ['适用条件', 'fit']].map(([label, key]) => (
-                <tr key={key} className="border-b border-space-800/70 last:border-0">
-                  <th className="px-3 py-3 align-top font-medium text-space-500">{label}</th>
-                  {SCHEDULING_STRATEGIES.map((item) => <td key={item.id} className="px-3 py-3 align-top leading-relaxed text-space-400">{item[key]}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <ComparisonTable
+        title="调度策略完整对照"
+        description="先比较选型结论，再用准入方式和 Prefill 处理解释差异；机制差异不直接等同于固定性能提升。"
+        columns={SCHEDULING_STRATEGIES}
+        rows={[
+          { label: '核心优势', key: 'advantage' },
+          { label: '主要局限', key: 'limitation' },
+          { label: '适用场景', key: 'fit' },
+          { label: '新请求准入', key: 'admission' },
+          { label: 'Prefill 处理', key: 'prefill' },
+        ]}
+      />
 
       <div className="flex flex-col gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] p-4 md:flex-row md:items-center md:justify-between">
-        <p className="text-sm leading-relaxed text-space-300">
-          选择策略时，应同时核对请求长度分布、TTFT/SLO 目标、最大批大小、Prefill 预算、显存余量与调度开销；最终结论需要在目标模型和硬件上实测。
-        </p>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button type="button" onClick={() => navigate('/panorama', { state: { moduleId: strategy.panoramaId } })} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/20">查看对应全景条目 <ArrowUpRight size={14} /></button>
-          <button type="button" onClick={() => navigate('/diagnosis')} className="inline-flex items-center gap-1.5 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-sm text-space-300 transition hover:border-space-500">进入链路诊断 <ArrowRight size={14} /></button>
-        </div>
+        <p className="text-sm leading-relaxed text-space-300">最终选择应结合请求长度分布、TTFT/SLO、最大批大小、Prefill 预算、显存余量与调度开销，在目标模型和硬件上验证。</p>
+        <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => navigate('/panorama', { state: { moduleId: strategy.panoramaId } })} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300">查看对应条目 <ArrowUpRight size={14} /></button><button type="button" onClick={() => navigate('/diagnosis')} className="inline-flex items-center gap-1.5 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-sm text-space-300">进入链路诊断 <ArrowRight size={14} /></button></div>
       </div>
     </div>
   );
@@ -267,30 +324,19 @@ function RoutingDiagram({ expertCount, topK, pattern }) {
   const tokens = ['请求', '模型', '缓存', '延迟', '并行', '量化', '吞吐', '显存'];
   const routes = tokens.map((token, tokenIndex) => {
     const primary = pattern === 'skewed' ? tokenIndex % Math.min(3, visibleExperts) : tokenIndex % visibleExperts;
-    return {
-      token,
-      experts: Array.from({ length: topK }, (_, k) => (primary + k * 3) % visibleExperts),
-    };
+    return { token, experts: Array.from({ length: topK }, (_, k) => (primary + k * 3) % visibleExperts) };
   });
   const loads = Array.from({ length: visibleExperts }, (_, expert) => routes.reduce((sum, route) => sum + (route.experts.includes(expert) ? 1 : 0), 0));
   const maxLoad = Math.max(...loads, 1);
 
   return (
     <div className="rounded-2xl border border-space-700/50 bg-space-900/50 p-4">
-      <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="font-semibold text-space-100">Token 路由演示</h3><p className="mt-1 text-xs text-space-500">演示分配用于观察负载形态，不代表真实 Router 输出。</p></div><Badge variant={pattern === 'balanced' ? 'emerald' : 'amber'}>{pattern === 'balanced' ? '相对均衡' : '局部集中'}</Badge></div>
+      <div className="mb-4 flex items-center justify-between gap-3"><div><h3 className="font-semibold text-space-100">Token 路由负载示意</h3><p className="mt-1 text-xs text-space-500">用于观察负载形态，不代表真实 Router 输出或固定性能结果。</p></div><Badge variant={pattern === 'balanced' ? 'emerald' : 'amber'}>{pattern === 'balanced' ? '相对均衡' : '局部集中'}</Badge></div>
       <div className="flex flex-wrap gap-2">
-        {routes.map((route) => (
-          <div key={route.token} className="rounded-lg border border-violet-500/25 bg-violet-500/[0.07] px-2.5 py-2 text-xs"><span className="text-space-200">{route.token}</span><span className="ml-2 font-mono text-violet-300">→ {route.experts.map(e => `E${e + 1}`).join(' / ')}</span></div>
-        ))}
+        {routes.map((route) => <div key={route.token} className="rounded-lg border border-violet-500/25 bg-violet-500/[0.07] px-2.5 py-2 text-xs"><span className="text-space-200">{route.token}</span><span className="ml-2 font-mono text-violet-300">→ {route.experts.map((expert) => `E${expert + 1}`).join(' / ')}</span></div>)}
       </div>
       <div className="mt-5 grid grid-cols-4 gap-2 sm:grid-cols-6">
-        {loads.map((load, index) => (
-          <div key={index} className="relative overflow-hidden rounded-lg border border-space-700/50 bg-space-950/45 p-2 text-center">
-            <div className="relative z-10 font-mono text-xs text-space-300">E{index + 1}</div>
-            <div className="relative z-10 mt-1 text-[10px] text-space-600">{load} Token</div>
-            <div className="absolute inset-x-0 bottom-0 bg-violet-500/15" style={{ height: `${(load / maxLoad) * 100}%` }} />
-          </div>
-        ))}
+        {loads.map((load, index) => <div key={index} className="relative overflow-hidden rounded-lg border border-space-700/50 bg-space-950/45 p-2 text-center"><div className="relative z-10 font-mono text-xs text-space-300">E{index + 1}</div><div className="relative z-10 mt-1 text-[10px] text-space-600">{load} Token</div><div className="absolute inset-x-0 bottom-0 bg-violet-500/15" style={{ height: `${(load / maxLoad) * 100}%` }} /></div>)}
       </div>
       {expertCount > visibleExperts && <p className="mt-3 text-center text-[11px] text-space-600">为保持图形可读，仅显示前 {visibleExperts} 个专家；公式仍按 {expertCount} 个专家计算。</p>}
     </div>
@@ -303,7 +349,6 @@ function MoeComparison({ navigate }) {
   const [expertCount, setExpertCount] = useState(8);
   const [topK, setTopK] = useState(2);
   const [pattern, setPattern] = useState('balanced');
-
   const safeTopK = Math.min(topK, expertCount);
   const totalParams = baseParams + expertSize * expertCount;
   const activeParams = baseParams + expertSize * safeTopK;
@@ -311,49 +356,52 @@ function MoeComparison({ navigate }) {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
-        <div className="space-y-3 rounded-2xl border border-space-700/50 bg-space-900/55 p-4">
-          <div><h2 className="flex items-center gap-2 font-semibold text-space-100"><Route size={17} className="text-violet-400" />MoE 结构参数</h2><p className="mt-1 text-xs leading-relaxed text-space-500">用显式结构参数计算总参数和单 Token 激活参数。</p></div>
-          <SliderControl label="共享与非专家参数" value={baseParams} min={2} max={40} step={2} unit="B" accent="violet" onChange={setBaseParams} />
-          <SliderControl label="单个专家参数" value={expertSize} min={1} max={16} step={1} unit="B" accent="violet" onChange={setExpertSize} />
-          <SliderControl label="专家数量" value={expertCount} min={4} max={32} step={4} accent="violet" onChange={(value) => { setExpertCount(value); setTopK(k => Math.min(k, value)); }} />
-          <SliderControl label="Top-K" value={safeTopK} min={1} max={Math.min(8, expertCount)} step={1} accent="violet" onChange={setTopK} />
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setPattern('balanced')} className={`rounded-lg border px-2 py-2 text-xs ${pattern === 'balanced' ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300' : 'border-space-700/50 text-space-500'}`}>相对均衡</button>
-            <button type="button" onClick={() => setPattern('skewed')} className={`rounded-lg border px-2 py-2 text-xs ${pattern === 'skewed' ? 'border-amber-500/35 bg-amber-500/10 text-amber-300' : 'border-space-700/50 text-space-500'}`}>局部集中</button>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <GlowCard accent="cyan" className="p-5">
-              <div className="flex items-center justify-between"><div><Badge variant="cyan">Dense</Badge><h3 className="mt-2 text-xl font-bold text-space-100">同总参数预算基线</h3></div><Layers3 size={30} className="text-cyan-400/70" /></div>
-              <div className="mt-5 grid grid-cols-2 gap-2"><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] uppercase text-space-600">总参数</div><div className="mt-1 font-mono text-2xl font-bold text-cyan-300">{totalParams}B</div></div><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] uppercase text-space-600">单 Token 激活</div><div className="mt-1 font-mono text-2xl font-bold text-cyan-300">{totalParams}B</div></div></div>
-              <p className="mt-4 text-sm leading-relaxed text-space-400">为控制变量，这里令 Dense 与 MoE 具有相同总参数预算；Dense 的全部参数参与每次前向，因此总参数与单 Token 激活参数相同。</p>
-              <button type="button" onClick={() => navigate('/panorama', { state: { moduleId: 'dense' } })} className="mt-4 inline-flex items-center gap-1.5 text-xs text-cyan-300 hover:text-cyan-200">查看稠密模型条目 <ArrowUpRight size={13} /></button>
-            </GlowCard>
-
-            <GlowCard accent="violet" className="p-5">
-              <div className="flex items-center justify-between"><div><Badge variant="violet">MoE</Badge><h3 className="mt-2 text-xl font-bold text-space-100">按路由激活专家</h3></div><Boxes size={30} className="text-violet-400/70" /></div>
-              <div className="mt-5 grid grid-cols-2 gap-2"><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] uppercase text-space-600">总参数</div><div className="mt-1 font-mono text-2xl font-bold text-violet-300">{totalParams}B</div></div><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] uppercase text-space-600">单 Token 激活</div><div className="mt-1 font-mono text-2xl font-bold text-emerald-300">{activeParams}B</div></div></div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-space-800"><motion.div animate={{ width: `${activeRatio * 100}%` }} className="h-full rounded-full bg-gradient-to-r from-violet-400 to-emerald-400" /></div>
-              <p className="mt-2 text-xs text-space-500">激活比例：({baseParams} + {expertSize} × {safeTopK}) ÷ ({baseParams} + {expertSize} × {expertCount}) = {(activeRatio * 100).toFixed(1)}%</p>
-              <button type="button" onClick={() => navigate('/panorama', { state: { moduleId: 'moe' } })} className="mt-4 inline-flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200">查看 MoE 条目 <ArrowUpRight size={13} /></button>
-            </GlowCard>
-          </div>
-          <RoutingDiagram expertCount={expertCount} topK={safeTopK} pattern={pattern} />
+      <div>
+        <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="font-semibold text-space-100">Dense 与 MoE 选型结论</h2><p className="mt-1 text-xs text-space-500">模型组织方式决定激活路径，也改变部署、通信和运维边界。</p></div><Badge variant="violet">并排比较</Badge></div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {MODEL_ORGANIZATION_DETAILS.map((item) => (
+            <div key={item.id} className={`rounded-2xl border p-5 ${item.color === 'cyan' ? 'border-cyan-500/30 bg-cyan-500/[0.055]' : 'border-violet-500/30 bg-violet-500/[0.055]'}`}>
+              <div className="flex items-start justify-between gap-3"><div><Badge variant={item.color}>{item.name}</Badge><h3 className="mt-3 text-xl font-bold text-space-100">{item.title}</h3></div>{item.id === 'dense' ? <Layers3 size={30} className="text-cyan-400/65" /> : <Boxes size={30} className="text-violet-400/65" />}</div>
+              <div className="mt-4"><TradeoffSummary advantage={item.advantage} limitation={item.limitation} fit={item.fit} compact /></div>
+              <div className="mt-3 rounded-xl border border-space-700/45 bg-space-950/35 p-3"><div className="text-[10px] font-semibold tracking-wide text-space-500">关键验证</div><p className="mt-1.5 text-[11px] leading-relaxed text-space-400">{item.validation}</p></div>
+              <button type="button" onClick={() => navigate('/panorama', { state: { moduleId: item.panoramaId } })} className={`mt-4 inline-flex items-center gap-1.5 text-xs ${item.color === 'cyan' ? 'text-cyan-300' : 'text-violet-300'}`}>查看对应条目 <ArrowUpRight size={13} /></button>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        {[
-          { icon: CheckCircle2, title: '参数效率', text: 'MoE 可以让总参数大于单 Token 激活参数，但激活量仍由共享部分、专家大小和 Top-K 决定。', color: 'text-emerald-400' },
-          { icon: Route, title: '路由与负载', text: 'Token 分布不均会让热门专家排队，瓶颈卡可能限制整体吞吐。', color: 'text-violet-400' },
-          { icon: AlertTriangle, title: '通信边界', text: '专家跨设备部署会引入 Dispatch、Combine 与 All-to-All 通信，增加 GPU 不一定更快。', color: 'text-amber-400' },
-        ].map((item) => {
-          const Icon = item.icon;
-          return <div key={item.title} className="rounded-xl border border-space-700/45 bg-space-900/45 p-4"><Icon size={17} className={item.color} /><h4 className="mt-2 text-sm font-semibold text-space-200">{item.title}</h4><p className="mt-1 text-xs leading-relaxed text-space-500">{item.text}</p></div>;
-        })}
+      <ComparisonTable
+        title="Dense 与 MoE 选型对照"
+        description="稀疏激活是结构差异，不应脱离模型实现、专家布局和通信拓扑直接推导端到端收益。"
+        columns={MODEL_ORGANIZATION_DETAILS}
+        rows={[
+          { label: '核心优势', key: 'advantage' },
+          { label: '主要局限', key: 'limitation' },
+          { label: '适用场景', key: 'fit' },
+          { label: '关键验证', key: 'validation' },
+        ]}
+        accent="violet"
+        badge="选型边界"
+      />
+
+      <div className="rounded-2xl border border-space-700/50 bg-space-950/30 p-4 md:p-5">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between"><div><h2 className="flex items-center gap-2 font-semibold text-space-100"><Gauge size={17} className="text-violet-400" />结构与路由验证工具</h2><p className="mt-1 text-xs text-space-500">公式和负载示意只用于核对结构边界，是选型结论的辅助证据。</p></div><Badge variant="slate">辅助证据</Badge></div>
+        <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+          <div className="space-y-3 rounded-2xl border border-space-700/50 bg-space-900/55 p-4">
+            <SliderControl label="共享与非专家参数" value={baseParams} min={2} max={40} step={2} unit="B" accent="violet" onChange={setBaseParams} />
+            <SliderControl label="单个专家参数" value={expertSize} min={1} max={16} step={1} unit="B" accent="violet" onChange={setExpertSize} />
+            <SliderControl label="专家数量" value={expertCount} min={4} max={32} step={4} accent="violet" onChange={(value) => { setExpertCount(value); setTopK((current) => Math.min(current, value)); }} />
+            <SliderControl label="Top-K" value={safeTopK} min={1} max={Math.min(8, expertCount)} step={1} accent="violet" onChange={setTopK} />
+            <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setPattern('balanced')} className={`rounded-lg border px-2 py-2 text-xs ${pattern === 'balanced' ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300' : 'border-space-700/50 text-space-500'}`}>相对均衡</button><button type="button" onClick={() => setPattern('skewed')} className={`rounded-lg border px-2 py-2 text-xs ${pattern === 'skewed' ? 'border-amber-500/35 bg-amber-500/10 text-amber-300' : 'border-space-700/50 text-space-500'}`}>局部集中</button></div>
+          </div>
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/[0.05] p-5"><div className="flex items-center justify-between"><Badge variant="cyan">Dense 基线</Badge><Layers3 size={25} className="text-cyan-400/65" /></div><div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] text-space-600">总参数</div><div className="mt-1 font-mono text-2xl font-bold text-cyan-300">{totalParams}B</div></div><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] text-space-600">单 Token 激活</div><div className="mt-1 font-mono text-2xl font-bold text-cyan-300">{totalParams}B</div></div></div><p className="mt-3 text-xs leading-relaxed text-space-500">同总参数预算下，Dense 的全部参数参与每次前向。</p></div>
+              <div className="rounded-2xl border border-violet-500/25 bg-violet-500/[0.05] p-5"><div className="flex items-center justify-between"><Badge variant="violet">MoE 结构</Badge><Boxes size={25} className="text-violet-400/65" /></div><div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] text-space-600">总参数</div><div className="mt-1 font-mono text-2xl font-bold text-violet-300">{totalParams}B</div></div><div className="rounded-xl border border-space-700/45 bg-space-950/40 p-3"><div className="text-[10px] text-space-600">单 Token 激活</div><div className="mt-1 font-mono text-2xl font-bold text-emerald-300">{activeParams}B</div></div></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-space-800"><motion.div animate={{ width: `${activeRatio * 100}%` }} className="h-full rounded-full bg-gradient-to-r from-violet-400 to-emerald-400" /></div><p className="mt-2 text-xs text-space-500">激活比例：({baseParams} + {expertSize} × {safeTopK}) ÷ ({baseParams} + {expertSize} × {expertCount}) = {(activeRatio * 100).toFixed(1)}%</p></div>
+            </div>
+            <RoutingDiagram expertCount={expertCount} topK={safeTopK} pattern={pattern} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -363,52 +411,63 @@ function QuantComparison({ navigate }) {
   const [parameterCount, setParameterCount] = useState(70);
   const [gpuMemory, setGpuMemory] = useState(80);
   const [selected, setSelected] = useState('int8');
-
   const values = Object.entries(PRECISION_DETAILS).map(([key, detail]) => {
     const bytes = PRECISIONS[key].bytes;
     const gib = parameterCount * 1e9 * bytes / (1024 ** 3);
-    return { key, ...detail, bytes, gib, shards: Math.ceil(gib / gpuMemory) };
+    return { id: key, key, ...detail, bytes, gib, shards: Math.ceil(gib / gpuMemory) };
   });
+  const selectedValue = values.find((value) => value.key === selected) || values[1];
   const fp16GiB = values[0].gib;
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
-        <div className="space-y-3 rounded-2xl border border-space-700/50 bg-space-900/55 p-4">
-          <div><h2 className="flex items-center gap-2 font-semibold text-space-100"><Database size={17} className="text-amber-400" />权重容量输入</h2><p className="mt-1 text-xs leading-relaxed text-space-500">结果是纯权重理论下界，不包含量化元数据和运行时空间。</p></div>
-          <SliderControl label="模型参数量" value={parameterCount} min={1} max={405} step={1} unit="B" accent="violet" onChange={setParameterCount} />
-          <SliderControl label="单卡显存输入" value={gpuMemory} min={8} max={192} step={8} unit=" GiB" accent="violet" onChange={setGpuMemory} />
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3 text-xs leading-relaxed text-amber-100/80"><strong>公式：</strong>参数量 × 每参数字节数 ÷ 1024³。分片数只表示权重容量下界，实际部署还需激活值、KV Cache、临时张量与框架空间。</div>
-        </div>
-
+      <div>
+        <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="font-semibold text-space-100">量化方案选型结论</h2><p className="mt-1 text-xs text-space-500">点击精度方案直接比较容量优势、实现局限与适用部署条件。</p></div><Badge variant="amber">容量只是证据</Badge></div>
         <div className="grid gap-3 md:grid-cols-3">
           {values.map((value) => {
             const active = selected === value.key;
+            const activeClass = value.key === 'fp16' ? 'border-cyan-500/45 bg-cyan-500/[0.08]' : value.key === 'int8' ? 'border-violet-500/45 bg-violet-500/[0.08]' : 'border-amber-500/45 bg-amber-500/[0.08]';
             return (
-              <button key={value.key} type="button" onClick={() => setSelected(value.key)} className={`rounded-2xl border p-4 text-left transition-all ${active ? value.key === 'fp16' ? 'border-cyan-500/45 bg-cyan-500/[0.08]' : value.key === 'int8' ? 'border-violet-500/45 bg-violet-500/[0.08]' : 'border-amber-500/45 bg-amber-500/[0.08]' : 'border-space-700/50 bg-space-900/50 hover:border-space-600'}`}>
+              <button key={value.key} type="button" aria-pressed={active} onClick={() => setSelected(value.key)} className={`rounded-2xl border p-4 text-left transition-all ${active ? activeClass : 'border-space-700/50 bg-space-900/50 hover:border-space-600'}`}>
                 <div className="flex items-center justify-between"><Badge variant={value.color}>{value.name}</Badge><span className="font-mono text-xs text-space-500">{value.bits} bit</span></div>
-                <div className="mt-5 font-mono text-3xl font-bold text-space-100">{formatGiB(value.gib)} <span className="text-sm font-normal text-space-500">GiB</span></div>
-                <div className="mt-1 text-xs text-space-500">{value.storage} · 相对 FP16 {(value.gib / fp16GiB * 100).toFixed(0)}%</div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-space-800"><motion.div initial={{ width: 0 }} animate={{ width: `${value.gib / fp16GiB * 100}%` }} className={`h-full rounded-full ${value.key === 'fp16' ? 'bg-cyan-400' : value.key === 'int8' ? 'bg-violet-400' : 'bg-amber-400'}`} /></div>
-                <div className="mt-4 rounded-lg border border-space-700/45 bg-space-950/35 p-2.5"><div className="text-[10px] uppercase text-space-600">权重容量下界分片</div><div className="mt-1 font-mono text-lg font-bold text-space-200">≥ {value.shards} × {gpuMemory} GiB</div></div>
+                <div className="mt-4 flex items-end justify-between gap-3"><div><div className="text-[10px] text-space-600">纯权重理论容量</div><div className="mt-1 font-mono text-2xl font-bold text-space-100">{formatGiB(value.gib)} <span className="text-xs font-normal text-space-500">GiB</span></div></div><span className="text-[10px] text-space-600">{active ? '当前方案' : '点击切换'}</span></div>
+                <div className="mt-4"><TradeoffSummary advantage={value.advantage} limitation={value.limitation} fit={value.fit} compact /></div>
               </button>
             );
           })}
         </div>
       </div>
 
-      {values.filter(value => value.key === selected).map((value) => (
-        <motion.div key={value.key} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border border-space-700/45 bg-space-900/45 p-4"><CheckCircle2 size={17} className="text-emerald-400" /><h3 className="mt-2 text-sm font-semibold text-space-200">可直接确认</h3><p className="mt-1 text-xs leading-relaxed text-space-500">在忽略元数据时，{value.name} 的纯权重理论容量为 {formatGiB(value.gib)} GiB。</p></div>
-          <div className="rounded-xl border border-space-700/45 bg-space-900/45 p-4"><Gauge size={17} className="text-violet-400" /><h3 className="mt-2 text-sm font-semibold text-space-200">实现条件</h3><p className="mt-1 text-xs leading-relaxed text-space-500">{value.requirement}</p></div>
-          <div className="rounded-xl border border-space-700/45 bg-space-900/45 p-4"><AlertTriangle size={17} className="text-amber-400" /><h3 className="mt-2 text-sm font-semibold text-space-200">必须实测</h3><p className="mt-1 text-xs leading-relaxed text-space-500">{value.risk} 容量降低也不等于获得同等比例的端到端加速。</p></div>
-        </motion.div>
-      ))}
-
-      <div className="flex flex-col gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-4 md:flex-row md:items-center md:justify-between">
-        <p className="text-sm leading-relaxed text-space-300">量化方案还需要结合 GPTQ、AWQ、PTQ/QAT、校准数据、目标模型层分布和硬件算子支持评估。</p>
-        <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => navigate('/panorama', { state: { moduleId: 'quant' } })} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">查看量化条目 <ArrowUpRight size={14} /></button><button type="button" onClick={() => navigate('/lab', { state: { tab: 'kv' } })} className="inline-flex items-center gap-1.5 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-sm text-space-300">进入容量实验室 <ArrowRight size={14} /></button></div>
+      <div className="rounded-2xl border border-space-700/50 bg-space-900/50 p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"><div><div className="flex items-center gap-2"><Badge variant={selectedValue.color}>{selectedValue.name}</Badge><span className="text-[10px] uppercase tracking-wider text-space-600">实施与验证边界</span></div><h2 className="mt-3 text-lg font-bold text-space-100">容量降低不能直接推导精度保持或端到端加速</h2></div><Binary size={28} className={selectedValue.color === 'cyan' ? 'text-cyan-400/60' : selectedValue.color === 'violet' ? 'text-violet-400/60' : 'text-amber-400/60'} /></div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.05] p-4"><div className="text-[10px] font-semibold text-violet-300">实现条件</div><p className="mt-2 text-sm leading-relaxed text-space-300">{selectedValue.requirement}</p></div><div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-4"><div className="text-[10px] font-semibold text-amber-300">必须验证</div><p className="mt-2 text-sm leading-relaxed text-space-300">{selectedValue.risk} 容量降低也不等于获得同等比例的端到端加速。</p></div></div>
       </div>
+
+      <ComparisonTable
+        title="量化方案选型对照"
+        description="理论容量用于判断能否装入显存；生产选型还必须验证量化方法、计算核、精度和真实负载。"
+        columns={values}
+        rows={[
+          { label: '核心优势', key: 'advantage' },
+          { label: '主要局限', key: 'limitation' },
+          { label: '适用场景', key: 'fit' },
+          { label: '实现条件', key: 'requirement' },
+        ]}
+        accent="amber"
+        badge="精度与容量权衡"
+      />
+
+      <div className="rounded-2xl border border-space-700/50 bg-space-950/30 p-4 md:p-5">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between"><div><h2 className="flex items-center gap-2 font-semibold text-space-100"><Database size={17} className="text-amber-400" />权重容量验证工具</h2><p className="mt-1 text-xs text-space-500">结果是纯权重理论下界，不包含量化尺度、零点、分组元数据、KV Cache 与运行时工作区。</p></div><Badge variant="slate">辅助证据</Badge></div>
+        <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+          <div className="space-y-3 rounded-2xl border border-space-700/50 bg-space-900/55 p-4"><SliderControl label="模型参数量" value={parameterCount} min={1} max={405} step={1} unit="B" accent="violet" onChange={setParameterCount} /><SliderControl label="单卡显存输入" value={gpuMemory} min={8} max={192} step={8} unit=" GiB" accent="violet" onChange={setGpuMemory} /><div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3 text-xs leading-relaxed text-space-400">计算式：参数量 × 每参数字节数；分片数仅按权重容量下界向上取整。</div></div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {values.map((value) => <div key={value.key} className={`rounded-2xl border p-4 ${value.key === selected ? (value.key === 'fp16' ? 'border-cyan-500/40 bg-cyan-500/[0.06]' : value.key === 'int8' ? 'border-violet-500/40 bg-violet-500/[0.06]' : 'border-amber-500/40 bg-amber-500/[0.06]') : 'border-space-700/50 bg-space-900/45'}`}><div className="flex items-center justify-between"><Badge variant={value.color}>{value.name}</Badge><span className="text-[10px] text-space-600">相对 FP16 {(value.gib / fp16GiB * 100).toFixed(0)}%</span></div><div className="mt-5 font-mono text-3xl font-bold text-space-100">{formatGiB(value.gib)} <span className="text-sm font-normal text-space-500">GiB</span></div><div className="mt-1 text-xs text-space-500">{value.storage}</div><div className="mt-4 h-2 overflow-hidden rounded-full bg-space-800"><motion.div initial={{ width: 0 }} animate={{ width: `${value.gib / fp16GiB * 100}%` }} className={`h-full rounded-full ${value.key === 'fp16' ? 'bg-cyan-400' : value.key === 'int8' ? 'bg-violet-400' : 'bg-amber-400'}`} /></div><div className="mt-4 rounded-lg border border-space-700/45 bg-space-950/35 p-2.5"><div className="text-[10px] text-space-600">权重容量下界分片</div><div className="mt-1 font-mono text-lg font-bold text-space-200">≥ {value.shards} × {gpuMemory} GiB</div></div></div>)}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-4 md:flex-row md:items-center md:justify-between"><p className="text-sm leading-relaxed text-space-300">量化方案还需要结合 GPTQ、AWQ、PTQ/QAT、校准数据、目标模型层分布和硬件算子支持评估。</p><div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => navigate('/panorama', { state: { moduleId: 'quant' } })} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">查看量化条目 <ArrowUpRight size={14} /></button><button type="button" onClick={() => navigate('/lab', { state: { tab: 'kv' } })} className="inline-flex items-center gap-1.5 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-sm text-space-300">进入容量实验室 <ArrowRight size={14} /></button></div></div>
     </div>
   );
 }
@@ -422,7 +481,7 @@ export default function Compare() {
     const requestedTab = location.state?.tab;
     if (requestedTab) {
       const normalizedTab = requestedTab === 'attention' ? 'scheduling' : requestedTab;
-      setActiveTab(TABS.some(tab => tab.id === normalizedTab) ? normalizedTab : 'scheduling');
+      setActiveTab(TABS.some((tab) => tab.id === normalizedTab) ? normalizedTab : 'scheduling');
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.pathname, location.state, navigate]);
