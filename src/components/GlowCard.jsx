@@ -30,7 +30,7 @@ export default function GlowCard({
       {...props}
     >
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent" />
-      <div className="relative">{children}</div>
+      <div className="relative h-full">{children}</div>
     </Comp>
   );
 }

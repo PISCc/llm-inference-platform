@@ -1,6 +1,6 @@
-﻿import { useEffect } from 'react';
+import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowRight, GitCommit, Hash, Folder, Sparkles, Lightbulb } from 'lucide-react';
+import { X, ArrowRight, GitCommit, Hash, Folder, Sparkles, Lightbulb, ShieldCheck, Link2 } from 'lucide-react';
 import Badge from './Badge.jsx';
 import ModuleIcon from './ModuleIcon.jsx';
 
@@ -185,8 +185,8 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
               </div>
 
               <div className="mt-6 rounded-xl border border-space-700/50 bg-gradient-to-br from-space-900/60 to-space-900/30 p-4">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-space-500">模块信息</h4>
-                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-space-500">溯源与边界</h4>
+                <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
                   <div>
                     <span className="text-space-500">编号</span>
                     <div className="mt-0.5 font-mono text-space-300">{module.id}</div>
@@ -195,7 +195,12 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
                     <span className="text-space-500">分类</span>
                     <div className="mt-0.5 text-space-300">{module.categoryLabel || module.category}</div>
                   </div>
+                  <div className="sm:col-span-2">
+                    <span className="flex items-center gap-1 text-space-500"><Link2 size={11} />项目条目来源</span>
+                    <div className="mt-0.5 break-all font-mono text-[10px] text-space-400">{module.source || '项目知识库内部整理'}</div>
+                  </div>
                 </div>
+                <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5 text-[11px] leading-relaxed text-amber-200"><ShieldCheck size={14} className="mt-0.5 shrink-0" />条目由项目知识库整理；容量与结构关系按公开定义或公式表述。性能、延迟、吞吐及硬件规格必须结合具体版本与实测条件判断。</div>
               </div>
             </div>
           </motion.div>

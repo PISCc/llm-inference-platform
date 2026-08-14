@@ -1,5 +1,5 @@
-﻿import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { Cpu, Network, FlaskConical, Scale, Search, Bot, Home } from 'lucide-react';
 import { cn } from '../utils/cn.js';
 import TechBackground from './TechBackground.jsx';
@@ -67,17 +67,9 @@ export default function Layout() {
         </div>
       </header>
       <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 py-8">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.28 }}
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
+        <div key={pathname}>
+          <Outlet />
+        </div>
       </main>
       <footer className="relative z-10 border-t border-space-700/50 py-6 text-center text-xs text-space-500">
         大模型推理互动展示平台 · React + Vite

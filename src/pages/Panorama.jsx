@@ -1,6 +1,6 @@
-﻿import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, Layers, Cpu, HardDrive, Box, Zap } from 'lucide-react';
+import { Search, Layers, Cpu, HardDrive, Zap, ArrowRight } from 'lucide-react';
 import GlowCard from '../components/GlowCard.jsx';
 import ModuleModal from '../components/ModuleModal.jsx';
 import ModuleIcon from '../components/ModuleIcon.jsx';
@@ -136,10 +136,18 @@ export default function Panorama() {
       <Hero query={query} setQuery={setQuery} />
 
       {filteredModules ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {filteredModules.map((m) => (
-            <ModuleCard key={m.id} module={m} accent="cyan" onClick={() => setSelected(m)} />
-          ))}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-cyan-200"><Search size={15} />搜索结果</div>
+            <Badge variant="cyan">找到 {filteredModules.length} 个模块</Badge>
+          </div>
+          {filteredModules.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {filteredModules.map((m) => <ModuleCard key={m.id} module={m} accent="cyan" onClick={() => setSelected(m)} />)}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-space-700 bg-space-900/35 px-6 py-12 text-center text-sm text-space-500">没有匹配模块，请尝试英文术语、中文标题或关键词。</div>
+          )}
         </div>
       ) : (
         <div className="space-y-10">
@@ -165,7 +173,7 @@ function Hero({ query, setQuery }) {
       <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-500/8 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-violet-500/8 blur-3xl" />
 
-      <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+      <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div>
           <Badge variant="cyan" className="mb-2">
             <Zap size={10} className="mr-1" />
@@ -174,9 +182,12 @@ function Hero({ query, setQuery }) {
           <h1 className="text-2xl font-bold tracking-tight text-space-50 md:text-3xl">
             系统化拆解<span className="text-gradient"> 推理全链路</span>
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-space-400">
-            {panoramaData.meta.moduleCount} 个核心模块覆盖推理系统完整技术栈
-          </p>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-space-400">从请求调度、模型结构到多卡部署，按技术域检索并查看定义、工作步骤和关联模块。</p>
+          <div className="mt-4 grid max-w-xl grid-cols-3 gap-2">
+            <HeroStat value={panoramaData.meta.moduleCount} label="技术模块" />
+            <HeroStat value={COLUMNS.length} label="技术域" />
+            <HeroStat value="可检索" label="内容入口" />
+          </div>
         </div>
 
         <div className="flex w-full items-center gap-3 md:w-auto">
@@ -190,20 +201,26 @@ function Hero({ query, setQuery }) {
               className="w-full rounded-lg border border-space-700 bg-space-900/70 py-2 pl-9 pr-4 text-sm text-space-200 outline-none ring-cyan-500/30 transition-all placeholder:text-space-600 focus:border-cyan-500/50 focus:ring-2"
             />
           </div>
-          <Badge variant="slate">{panoramaData.meta.moduleCount} 模块</Badge>
+          <Badge variant="slate">数据源：项目知识库</Badge>
         </div>
       </div>
     </section>
   );
 }
 
+function HeroStat({ value, label }) {
+  return <div className="rounded-lg border border-space-700/50 bg-space-950/50 px-3 py-2"><div className="font-mono text-sm font-bold text-space-100">{value}</div><div className="mt-0.5 text-[10px] text-space-500">{label}</div></div>;
+}
+
 function SectionBlock({ col, groups, onSelect }) {
   const style = ACCENT_STYLES[col.accent];
   const Icon = col.icon;
+  const moduleCount = col.groups.reduce((sum, group) => sum + (groups[group]?.length || 0), 0);
 
   return (
     <section>
-      <div className="mb-5 flex items-center gap-3">
+      <div className={cn('mb-5 flex items-center justify-between gap-3 rounded-2xl border p-4', style.headerBg, style.border)}>
+        <div className="flex items-center gap-3">
         <div className={cn('flex h-11 w-11 items-center justify-center rounded-xl border', style.bg, style.border)}>
           <Icon size={22} className={style.text} />
         </div>
@@ -211,6 +228,8 @@ function SectionBlock({ col, groups, onSelect }) {
           <h2 className={cn('text-xl font-bold md:text-2xl', style.text)}>{col.title}</h2>
           <p className="text-xs font-mono text-space-500">{col.subtitle}</p>
         </div>
+        </div>
+        <div className="hidden items-center gap-2 text-right sm:flex"><Badge variant={style.badge}>{moduleCount} 模块</Badge><span className="text-[10px] text-space-500">{col.subtitle}</span></div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -248,7 +267,7 @@ function GroupBlock({ group, modules, columnAccent, onSelect }) {
         </div>
         <Badge variant={style.badge}>{modules.length}</Badge>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {modules.map((m) => (
           <ModuleCard key={m.id} module={m} accent={columnAccent} onClick={() => onSelect(m)} />
         ))}
@@ -264,7 +283,7 @@ function ModuleCard({ module, accent = 'cyan', onClick }) {
       interactive
       accent={accent}
       onClick={onClick}
-      className="flex h-full flex-col p-3 text-left"
+      className="module-card flex h-full flex-col p-3.5 text-left transition-transform"
     >
       <div className="mb-2 flex items-center gap-2">
         <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md border', style.icon)}>
@@ -276,6 +295,7 @@ function ModuleCard({ module, accent = 'cyan', onClick }) {
           </div>
       </div>
       <p className="line-clamp-2 text-xs leading-relaxed text-space-400">{module.summary}</p>
+      <div className="mt-auto flex items-center justify-between gap-2 pt-3 text-[10px] text-space-600"><span>{module.categoryLabel || module.category}</span><ArrowRight size={12} className={style.text} /></div>
     </GlowCard>
   );
 }

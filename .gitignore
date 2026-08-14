@@ -1,0 +1,30 @@
+# Dependencies and generated caches
+node_modules/
+.vite/
+
+# Runtime logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Test and coverage output
+coverage/
+
+# Temporary browser and editor files
+.browser-*
+browser-*
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Backups are stored outside the repository
+backups/

@@ -1,4 +1,4 @@
-﻿import { Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Cpu, Network, FlaskConical, Scale, Search, Bot,
@@ -28,7 +28,7 @@ const MODULES = [
   {
     to: '/lab',
     title: '参数实验室',
-    desc: '拖动参数，实时观察显存、延迟、吞吐与 Attention 结构变化',
+    desc: '拖动参数，实时复算 KV Cache、权重容量与 Attention 缓存结构',
     icon: FlaskConical,
     accent: 'emerald',
     tags: ['可交互', '图表'],

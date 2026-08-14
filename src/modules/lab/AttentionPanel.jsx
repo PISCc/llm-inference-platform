@@ -1,152 +1,173 @@
 ﻿import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
-  ResponsiveContainer, Cell,
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend
+  ResponsiveContainer, Cell
 } from 'recharts';
-import { Network, ChevronRight } from 'lucide-react';
+import { Network, ChevronRight, Zap, Database, ShieldCheck } from 'lucide-react';
 import GlowCard from '../../components/GlowCard.jsx';
 import Badge from '../../components/Badge.jsx';
 import {
   SliderControl, MetricCard,
-  calcKVCache, ARCHITECTURES
+  calcKVCache, ARCHITECTURES, ATTENTION_KERNELS, getArchitectureKVHeads
 } from './common.jsx';
 
 export default function AttentionPanel({ params, setParams, calcResult, baselineCalc }) {
   const archList = Object.entries(ARCHITECTURES);
+  const kernel = ATTENTION_KERNELS[params.attentionKernel];
 
-  const radarData = useMemo(() => {
-    return archList.map(([key, arch]) => ({
-      subject: arch.name,
-      显存效率: Math.min(100, Math.round((1 / arch.memoryFactor) * 25)),
-      推理速度: Math.min(100, Math.round(arch.speedFactor * 65)),
-      生成质量: Math.min(100, Math.round(arch.qualityFactor * 95)),
-      fullMark: 100,
-    }));
-  }, []);
-
-  const compareData = useMemo(() => {
-    return archList.map(([key, arch]) => {
-      const archCalc = calcKVCache({ ...params, numKVHeads: Math.max(1, Math.round(params.numHeads * arch.kvHeadRatio)) });
-      return {
-        name: arch.name,
-        label: arch.label,
-        kvGB: archCalc.kvCacheGB,
-        memoryFactor: arch.memoryFactor,
-        speedFactor: arch.speedFactor,
-        qualityFactor: arch.qualityFactor,
-        color: arch.color,
-        desc: arch.desc,
-      };
+  const compareData = useMemo(() => archList.map(([key, arch]) => {
+    const archCalc = calcKVCache({
+      ...params,
+      architecture: key,
+      numKVHeads: getArchitectureKVHeads(key, params.numHeads),
     });
-  }, [params]);
+    return {
+      key,
+      name: arch.name,
+      label: arch.label,
+      kvGiB: archCalc.kvCacheGB,
+      ratio: archCalc.kvMemoryRatio,
+      color: arch.color,
+      desc: arch.desc,
+      structure: archCalc.isLatent ? `${archCalc.latentWidth} 维潜变量缓存` : `${archCalc.effectiveKVHeads} 个 K/V 头`,
+    };
+  }), [archList, params]);
 
   const arch = ARCHITECTURES[params.architecture];
+  const currentStructure = calcResult.isLatent
+    ? `${calcResult.latentWidth} 维/Token/层`
+    : `${calcResult.effectiveKVHeads} 个 K/V 头`;
+
+  const setArchitecture = (key) => {
+    setParams((current) => ({
+      ...current,
+      architecture: key,
+      numKVHeads: getArchitectureKVHeads(key, current.numHeads) ?? current.numKVHeads,
+      parameterCountB: null,
+      referenceName: null,
+    }));
+  };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-      <div className="lg:col-span-3 space-y-3">
-        <GlowCard accent="cyan" className="p-4">
-          <h3 className="text-sm font-semibold text-space-200 mb-3 flex items-center gap-2">
-            <Network size={14} className="text-cyan-400" /> 选择架构
-          </h3>
-          <div className="space-y-2">
-            {archList.map(([key, archInfo]) => (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <div className="space-y-4 lg:col-span-3">
+        <GlowCard accent="cyan" className="panel-shell p-4">
+          <div className="panel-title-row">
+            <div className="panel-icon panel-icon-cyan"><Network size={15} /></div>
+            <div><h3 className="panel-title">Attention 架构</h3><p className="panel-kicker">PERSISTENT KV STRUCTURE</p></div>
+          </div>
+          <div className="mt-4 space-y-2">
+            {archList.map(([key, info]) => (
               <button
                 key={key}
-                onClick={() => {
-                  const newKVHeads = key === 'FlashAttention' ? params.numHeads : Math.max(1, Math.round(params.numHeads * archInfo.kvHeadRatio));
-                  setParams(p => ({ ...p, architecture: key, numKVHeads: newKVHeads }));
-                }}
-                className={`w-full text-left rounded-lg border px-3 py-2 transition-all ${
+                onClick={() => setArchitecture(key)}
+                className={`w-full rounded-xl border px-3.5 py-3 text-left transition-all ${
                   params.architecture === key
-                    ? 'border-cyan-400/50 bg-cyan-500/10'
-                    : 'border-space-700/50 bg-space-900/30 hover:border-space-600'
+                    ? 'border-cyan-400/45 bg-cyan-500/10 shadow-[inset_3px_0_0_rgba(34,211,238,.7)]'
+                    : 'border-space-700/50 bg-space-950/30 hover:border-space-600 hover:bg-space-900/70'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-space-200">{archInfo.name}</span>
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: archInfo.color }} />
+                <div className="flex items-center justify-between gap-2">
+                  <div><span className="text-sm font-semibold text-space-100">{info.name}</span><span className="ml-2 text-[10px] text-space-600">{info.label}</span></div>
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: info.color }} />
                 </div>
-                <div className="text-[11px] text-space-500 mt-0.5">{archInfo.desc}</div>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-space-500">{info.desc}</p>
               </button>
             ))}
           </div>
         </GlowCard>
-        <GlowCard accent="cyan" className="p-4">
-          <h3 className="text-sm font-semibold text-space-200 mb-3">模型参数</h3>
-          <div className="space-y-3">
-            <SliderControl label="隐藏维度" value={params.hiddenSize} min={512} max={16384} step={512} unit="" onChange={(v) => setParams(p => ({ ...p, hiddenSize: v }))} accent="cyan" />
-            <SliderControl label="注意力头数" value={params.numHeads} min={8} max={128} step={8} unit="头" onChange={(v) => setParams(p => ({ ...p, numHeads: v }))} accent="cyan" />
-            <SliderControl label="层数" value={params.numLayers} min={4} max={128} step={2} unit="层" onChange={(v) => setParams(p => ({ ...p, numLayers: v }))} accent="cyan" />
-            <SliderControl label="序列长度" value={params.seqLen} min={128} max={131072} step={128} unit="" onChange={(v) => setParams(p => ({ ...p, seqLen: v }))} accent="cyan" />
+
+        <GlowCard accent="cyan" className="panel-shell p-4">
+          <div className="panel-title-row">
+            <div className="panel-icon panel-icon-cyan"><Zap size={15} /></div>
+            <div><h3 className="panel-title">计算实现</h3><p className="panel-kicker">KERNEL IS NOT AN ARCHITECTURE</p></div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            {Object.entries(ATTENTION_KERNELS).map(([key, item]) => (
+              <button
+                key={key}
+                onClick={() => setParams(p => ({ ...p, attentionKernel: key }))}
+                className={`rounded-xl border p-3 text-left transition-all ${
+                  params.attentionKernel === key
+                    ? 'border-violet-400/40 bg-violet-500/10'
+                    : 'border-space-700/50 bg-space-950/30 hover:border-space-600'
+                }`}
+              >
+                <div className="text-xs font-semibold text-space-200">{item.name}</div>
+                <p className="mt-1.5 text-[10px] leading-relaxed text-space-500">{item.desc}</p>
+              </button>
+            ))}
           </div>
         </GlowCard>
       </div>
 
-      <div className="lg:col-span-6 space-y-4">
-        <GlowCard accent="cyan" className="p-4 h-80">
-          <h3 className="text-sm font-semibold text-space-200 mb-2">各架构 KV Cache 对比</h3>
-          <ResponsiveContainer width="100%" height="90%">
-            <BarChart data={compareData} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
-              <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 10 }} label={{ value: 'GB', position: 'insideBottom', fill: '#64748b', fontSize: 10, offset: -2 }} />
-              <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={60} />
-              <ReTooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }} />
-              <Bar dataKey="kvGB" radius={[0, 4, 4, 0]}>
-                {compareData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </GlowCard>
-        <GlowCard accent="cyan" className="p-4 h-64">
-          <h3 className="text-sm font-semibold text-space-200 mb-2">能力雷达图</h3>
-          <ResponsiveContainer width="100%" height="90%">
-            <RadarChart data={radarData}>
-              <PolarGrid stroke="#334155" />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-              <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: '#64748b', fontSize: 9 }} />
-              <Radar name="显存效率" dataKey="显存效率" stroke="#10b981" fill="#10b981" fillOpacity={0.15} />
-              <Radar name="推理速度" dataKey="推理速度" stroke="#22d3ee" fill="#22d3ee" fillOpacity={0.15} />
-              <Radar name="生成质量" dataKey="生成质量" stroke="#a78bfa" fill="#a78bfa" fillOpacity={0.15} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </GlowCard>
-      </div>
-
-      <div className="lg:col-span-3 space-y-3">
-        <GlowCard accent="cyan" className="p-4">
-          <h3 className="text-sm font-semibold text-space-200 mb-3">当前架构详情</h3>
-          <div className="space-y-3">
-            <div>
-              <Badge variant="cyan">{arch.name}</Badge>
-              <div className="text-xs text-space-400 mt-1">{arch.label}</div>
-              <div className="text-[11px] text-space-500 mt-0.5">{arch.desc}</div>
+      <div className="space-y-4 lg:col-span-6">
+        <GlowCard accent="cyan" className="panel-shell h-[360px] p-5">
+          <div className="flex h-full flex-col">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="panel-title-row">
+                <div className="panel-icon panel-icon-cyan"><Database size={15} /></div>
+                <div><h3 className="panel-title">持久 KV Cache 容量</h3><p className="panel-kicker">SAME INPUT · SAME PRECISION</p></div>
+              </div>
+              <Badge variant="cyan">可复算公式</Badge>
             </div>
-            <MetricCard label="KV Cache" value={calcResult.kvCacheGB} unit="GB" prevValue={baselineCalc.kvCacheGB} accent="cyan" />
-            <MetricCard label="相对 MHA 显存" value={arch.memoryFactor} unit="x" accent={arch.memoryFactor < 1 ? 'emerald' : 'rose'} />
-            <MetricCard label="速度提升" value={arch.speedFactor} unit="x" accent="emerald" />
-            <MetricCard label="质量保留" value={arch.qualityFactor} unit="x" accent="violet" />
+            <div className="mt-4 min-h-0 flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={compareData} layout="vertical" margin={{ top: 8, right: 28, bottom: 10, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#64748b', fontSize: 10 }} label={{ value: 'GiB', position: 'insideBottom', fill: '#64748b', fontSize: 10, offset: -4 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#cbd5e1', fontSize: 11 }} width={54} />
+                  <ReTooltip contentStyle={{ background: '#07101f', border: '1px solid #334155', borderRadius: 12, fontSize: 12 }} formatter={(value) => [`${Number(value).toFixed(3)} GiB`, 'KV Cache']} />
+                  <Bar dataKey="kvGiB" radius={[0, 6, 6, 0]} barSize={24}>
+                    {compareData.map((entry) => <Cell key={entry.key} fill={entry.color} fillOpacity={entry.key === params.architecture ? 1 : 0.58} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </GlowCard>
-        <GlowCard accent="slate" className="p-3">
-          <h4 className="text-xs font-semibold text-space-300 mb-2">架构选型建议</h4>
-          <div className="text-[11px] text-space-500 space-y-1.5">
-            <div className="flex items-start gap-1.5">
-              <ChevronRight size={11} className="mt-0.5 text-cyan-400 shrink-0" />
-              <span><strong className="text-space-400">长文本场景</strong>：优先 MLA 或 GQA，显存随序列线性增长，KV 压缩比高</span>
-            </div>
-            <div className="flex items-start gap-1.5">
-              <ChevronRight size={11} className="mt-0.5 text-cyan-400 shrink-0" />
-              <span><strong className="text-space-400">极致速度</strong>：FlashAttention + GQA 组合，IO 与 KV 双优化</span>
-            </div>
-            <div className="flex items-start gap-1.5">
-              <ChevronRight size={11} className="mt-0.5 text-cyan-400 shrink-0" />
-              <span><strong className="text-space-400">质量优先</strong>：MHA 或 MLA，避免 MQA 的信息损失</span>
-            </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          {compareData.map((item) => (
+            <button key={item.key} onClick={() => setArchitecture(item.key)} className={`rounded-2xl border p-4 text-left transition-all ${item.key === params.architecture ? 'border-cyan-400/35 bg-cyan-500/8' : 'border-space-700/50 bg-space-900/45 hover:border-space-600'}`}>
+              <div className="flex items-center justify-between"><span className="text-sm font-semibold text-space-200">{item.name}</span><span className="font-mono text-xs" style={{ color: item.color }}>{item.ratio.toFixed(3)}× MHA</span></div>
+              <div className="mt-2 text-[11px] text-space-500">{item.structure}</div>
+              <div className="mt-1 font-mono text-xs text-space-300">{item.kvGiB.toFixed(3)} GiB</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4 lg:col-span-3">
+        <GlowCard accent="cyan" className="panel-shell p-4">
+          <div className="panel-title-row">
+            <div className="panel-icon panel-icon-cyan"><ShieldCheck size={15} /></div>
+            <div><h3 className="panel-title">当前组合</h3><p className="panel-kicker">STRUCTURE-LEVEL RESULT</p></div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2"><Badge variant="cyan">{arch.name}</Badge><Badge variant="violet">{kernel.name}</Badge></div>
+          <p className="mt-3 text-xs leading-relaxed text-space-500">{arch.desc}</p>
+          <div className="mt-4 space-y-2">
+            <MetricCard label="KV Cache" value={calcResult.kvCacheGB} unit="GiB" prevValue={baselineCalc.kvCacheGB} accent="cyan" />
+            <MetricCard label="相对 MHA 容量" value={calcResult.kvMemoryRatio} unit="×" accent={calcResult.kvMemoryRatio < 1 ? 'emerald' : 'slate'} digits={3} />
+            <MetricCard label="缓存结构" value={currentStructure} unit="" accent="violet" />
+          </div>
+        </GlowCard>
+
+        <GlowCard accent="slate" className="panel-shell p-4">
+          <h4 className="text-xs font-semibold text-space-300">实现边界</h4>
+          <div className="mt-3 space-y-2 text-[11px] leading-relaxed text-space-500">
+            <div className="flex items-start gap-1.5"><ChevronRight size={11} className="mt-0.5 shrink-0 text-cyan-400" /><span>架构决定持久 K/V 的组织方式；FlashAttention 属于计算实现优化。</span></div>
+            <div className="flex items-start gap-1.5"><ChevronRight size={11} className="mt-0.5 shrink-0 text-cyan-400" /><span>FlashAttention 不改变本页的持久 KV Cache 容量。</span></div>
+            <div className="flex items-start gap-1.5"><ChevronRight size={11} className="mt-0.5 shrink-0 text-cyan-400" /><span>速度、临时显存和模型质量不展示固定倍率，必须在指定模型、硬件和算子版本上测量。</span></div>
+          </div>
+        </GlowCard>
+
+        <GlowCard accent="slate" className="panel-shell p-4">
+          <h4 className="text-xs font-semibold text-space-300">公式口径</h4>
+          <div className="mt-3 space-y-2 text-[10px] leading-relaxed text-space-500">
+            <div className="formula-chip">MHA/GQA/MQA = 2 × L × Hkv × dh × S × B × bytes</div>
+            <div className="formula-chip">MLA = L × S × B × (dlatent + drope) × bytes</div>
+            <div>MLA 默认维度对应 DeepSeek-V2 公开配置；其他 MLA 模型应替换为自身配置。</div>
           </div>
         </GlowCard>
       </div>

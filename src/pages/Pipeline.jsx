@@ -1,23 +1,37 @@
-﻿import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Play, RotateCcw, Zap, Database, Clock, MemoryStick, Gauge,
+  Play, RotateCcw, Zap, Database, Gauge,
   ChevronRight, Sparkles, AlertCircle, CheckCircle2, ArrowRight,
   Type, Hash, BookOpen, Pause, SkipForward, Layers2
 } from 'lucide-react';
 import GlowCard from '../components/GlowCard.jsx';
 import Badge from '../components/Badge.jsx';
+import knowledgeData from '../data/knowledge.json';
 
-const CASES = [
-  { id: 'weather', label: '天气查询', question: '今天北京的天气怎么样？', reply: ['今天','北京','天气','晴朗','，','气温','25','°C','，','适合','出行','。'], batchReply: { 2: ['今天','上海','天气','多云','，','气温','22','°C','。'], 3: ['今天','广州','天气','小雨','，','气温','28','°C','。'], 4: ['今天','深圳','天气','阴天','，','气温','27','°C','。'] } },
-  { id: 'math', label: '简单算术', question: '3加5等于多少？', reply: ['3','加','5','等于','8','。'], batchReply: { 2: ['7','减','2','等于','5','。'], 3: ['4','乘','6','等于','24','。'], 4: ['9','除','3','等于','3','。'] } },
-  { id: 'geography', label: '地理常识', question: '中国的首都是哪里？', reply: ['中国','的','首都','是','北京','。'], batchReply: { 2: ['美国','的','首都','是','华盛顿','。'], 3: ['日本','的','首都','是','东京','。'], 4: ['英国','的','首都','是','伦敦','。'] } },
-  { id: 'moe', label: 'MoE', question: 'MoE（混合专家）模型有什么特点？', reply: ['MoE','（','Mixture','of','Experts','，','混合','专家','）','拥有','很多','专家','参数','，','但','每个','Token','只','激活','少数','专家','，','实现','参数量','与','计算量','分离','。'] },
-  { id: 'speculative-decoding', label: '推测解码', question: 'Speculative Decoding 如何加速生成？', reply: ['Speculative','Decoding','用','草稿','模型','快速','猜','一串','Token','，','大','模型','一次','并行','验证','，','接受','连续','正确','的','部分','。'] },
-  { id: 'flashattention', label: 'FlashAttention', question: 'FlashAttention 为什么能节省显存？', reply: ['FlashAttention','通过','分块','计算','与','在线','更新','，','减少','Attention','的','显存','访问量','，','不','改变','数学','结果','。'] },
-];
+const KNOWLEDGE_CASE_IDS = ['kv-cache', 'attention-机制', 'pagedattention', 'moe', 'speculative-decoding', 'flashattention'];
+const KNOWLEDGE_ENTRIES = knowledgeData.entries || [];
 
+function splitForAnimation(text) {
+  return text
+    .split(/([，。；：、（）()\s]|Attention|Token|KV Cache|PagedAttention|FlashAttention|Speculative Decoding|MoE)/)
+    .filter(Boolean)
+    .filter((part) => !/^\s+$/.test(part));
+}
+
+const CASES = KNOWLEDGE_CASE_IDS.map((id) => {
+  const entry = KNOWLEDGE_ENTRIES.find((item) => item.id === id);
+  if (!entry) return null;
+  return {
+    id,
+    label: entry.title,
+    question: `什么是${entry.title}？`,
+    answer: entry.definition,
+    reply: splitForAnimation(entry.definition),
+    sourceFile: entry.sourceFile,
+  };
+}).filter(Boolean);
 const STAGES = [
   { key: 'idle', label: '输入', desc: '选择问题与Batch模式', panoramaId: null },
   { key: 'tokenizing', label: '分词', desc: '将句子拆分为Token', panoramaId: 'token' },
@@ -33,35 +47,28 @@ const BATCH_CONFIG = [
   { key: 4, label: 'Batch-4', desc: '4个请求并行计算' },
 ];
 
-function getTokenId(token) {
-  if (token.length === 1) {
-    const code = token.charCodeAt(0);
-    if (code > 127) return 'U+' + code.toString(16).toUpperCase().padStart(4,'0');
-    return String(code);
-  }
-  const sum = token.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-  return String(sum % 100000 + 1000);
+function getDemoTokenId(token, index) {
+  const hash = Array.from(token).reduce((value, char) => ((value * 131) + char.codePointAt(0)) >>> 0, 2166136261);
+  return 1000 + ((hash + index * 97) % 9000);
 }
 
-function tokenize(text) {
-  const tokens = [];
-  for (let i = 0; i < text.length; ) {
-    if (text[i].match(/[\u4e00-\u9fa5]/)) { tokens.push(text[i]); i++; }
-    else if (text[i] === ' ') { i++; }
-    else { let j = i; while (j < text.length && !text[j].match(/[\u4e00-\u9fa5\s]/)) j++; tokens.push(text.slice(i,j)); i = j; }
-  }
-  return tokens.length > 0 ? tokens : [text];
+function tokenizeForDemo(text) {
+  const segments = text.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*|\d+(?:\.\d+)?|[\u3400-\u9fff]|[^\s]/g);
+  return segments?.length ? segments : [text];
 }
 
-function calcStats(inputLen, outputLen, useCache, batchSize) {
-  const ttft = Math.round(inputLen * 2.8);
-  const tpot = useCache ? 16 : Math.round(inputLen * 2.8 + 16);
-  const totalTime = Math.round(ttft + tpot * outputLen);
-  const memoryMB = useCache ? Math.round((inputLen + outputLen) * 0.5 * batchSize) : 0;
-  const tokensPerSec = Math.round((1000 / tpot) * batchSize * 10) / 10;
-  return { ttft, tpot, totalTime, memoryMB, tokensPerSec };
+function calcStructuralCounts(inputLen, outputLen, useCache, batchSize) {
+  const decodeHistoryWork = Array.from({ length: outputLen }, (_, index) => inputLen + index + 1)
+    .reduce((total, length) => total + length, 0);
+  const decodeWork = useCache ? outputLen : decodeHistoryWork;
+  const cachedVectors = useCache ? (inputLen + outputLen) * batchSize * 2 : 0;
+  return {
+    prefillTokens: inputLen * batchSize,
+    decodeSteps: outputLen * batchSize,
+    relativeDecodeWork: decodeWork * batchSize,
+    cachedVectors,
+  };
 }
-
 function StageNode({ index, label, active, done, panoramaId, navigate }) {
   const canClick = !!panoramaId;
   return (
@@ -85,7 +92,7 @@ function TokenizingView({ tokens }) {
   useEffect(() => { setVisibleCount(0); }, [tokens]);
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 px-2">
-      <div className="text-center"><Badge variant="cyan">分词中</Badge><p className="mt-2 text-xs text-space-500">将输入文本拆解为 Token，并为每个 Token 分配 Unicode 编码作为 ID</p></div>
+      <div className="text-center"><Badge variant="cyan">分词中</Badge><p className="mt-2 text-xs text-space-500">使用确定性的演示分词规则拆分文本，并生成仅用于本页追踪的演示 ID</p></div>
       <div className="w-full max-w-lg space-y-2">
         {tokens.map((tok,i) => {
           const isVisible = i < visibleCount;
@@ -98,7 +105,7 @@ function TokenizingView({ tokens }) {
               <ArrowRight size={14} className="text-space-600" />
               <motion.div initial={{ scale: 0.8 }} animate={isVisible ? { scale: 1 } : { scale: 0.8 }} transition={{ delay: 0.1 }}
                 className="flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-1.5">
-                <Hash size={11} className="text-violet-400" /><span className="text-xs text-violet-300 font-mono">{getTokenId(tok)}</span>
+                <Hash size={11} className="text-violet-400" /><span className="text-xs text-violet-300 font-mono">{getDemoTokenId(tok, i)}</span>
               </motion.div>
             </motion.div>
           );
@@ -106,7 +113,7 @@ function TokenizingView({ tokens }) {
       </div>
       {visibleCount >= tokens.length && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs text-emerald-300">
-          共 {tokens.length} 个 Token，准备进入 Prefill 阶段...
+          当前演示得到 {tokens.length} 个片段；真实 Token 与 TokenID 由所选模型的 Tokenizer 词表决定。
         </motion.div>
       )}
     </div>
@@ -114,9 +121,9 @@ function TokenizingView({ tokens }) {
 }
 
 const PREfill_SHOTS = [
-  { key: 'embedding', label: 'Embedding', desc: 'Token 嵌入 + 位置编码 = 输入向量 (真实计算)' },
-  { key: 'qkv',     label: 'Q/K/V 投影',  desc: '矩阵乘法: X·Wq=Q, X·Wk=K, X·Wv=V (真实权重)' },
-  { key: 'attention', label: '自注意力',  desc: 'softmax(Q·K^T/√d) · V (真实注意力分数)' },
+  { key: 'embedding', label: 'Embedding', desc: 'Token 嵌入 + 位置信息 = 输入向量（教学矩阵）' },
+  { key: 'qkv',     label: 'Q/K/V 投影',  desc: '矩阵乘法：X·Wq=Q，X·Wk=K，X·Wv=V（固定演示权重）' },
+  { key: 'attention', label: '自注意力',  desc: 'softmax(Q·Kᵀ/√d)·V（由演示矩阵计算）' },
   { key: 'ffn',     label: '残差+FFN', desc: '残差连接 → LayerNorm → 升维 → GELU → 降维' },
 ];
 
@@ -125,7 +132,7 @@ function generateRealData(tokens) {
   const n = Math.min(tokens.length, 4);
   const used = tokens.slice(0, n);
   
-  // Embedding (哈希生成真实值)
+  // Embedding：由确定性规则生成的小型教学向量
   const embed = used.map((t, i) => ({
     token: t,
     vec: Array.from({length: d}, (_, j) => {
@@ -188,7 +195,7 @@ function usePlaybackSteps(length, ms, playing) {
   return step;
 }
 
-// ========== 子镜头1: Embedding (真实数据) ==========
+// ========== 子镜头1: Embedding 教学矩阵 ==========
 function EmbeddingShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
   const step = usePlaybackSteps(data.input.length * 3 + 1, 380, playing);
@@ -236,7 +243,7 @@ function EmbeddingShot({ tokens, playing }) {
   );
 }
 
-// ========== 子镜头2: Q/K/V (真实权重和计算) ==========
+// ========== 子镜头2: Q/K/V 固定演示权重 ==========
 function QKVShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
   const n = data.input.length;
@@ -321,7 +328,7 @@ function QKVShot({ tokens, playing }) {
   );
 }
 
-// ========== 子镜头3: Attention (真实分数) ==========
+// ========== 子镜头3: Attention 演示矩阵结果 ==========
 function AttentionShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
   const step = usePlaybackSteps(data.attn.length * data.attn.length + data.attn.length + 1, 230, playing);
@@ -478,9 +485,9 @@ function ResidualFFNShot({ tokens, playing }) {
       <div className={`flex items-center gap-3 text-sm transition-all duration-500 ${allDone ? 'opacity-100' : 'opacity-30'}`}>
         <span className="rounded-md border border-space-700 bg-space-800/50 px-3 py-1.5">Attention 输出 + 原始输入</span>
         <span className="text-space-600">→</span>
-        <span className="rounded-md border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-emerald-300 font-semibold">Layer 输出 (写入 KV Cache)</span>
+        <span className="rounded-md border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-emerald-300 font-semibold">本层输出（进入下一层）</span>
       </div>
-      {allDone && <div className="text-sm font-semibold text-emerald-300">✓ 本层完成，K、V 已写入 KV Cache</div>}
+      {allDone && <div className="text-sm font-semibold text-emerald-300">✓ 本层 K、V 已加入演示缓存；层输出继续传递到下一层</div>}
     </div>
   );
 }
@@ -511,8 +518,8 @@ const PrefillView = forwardRef(function PrefillView({ tokens, isPlaying, onCompl
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="text-center">
-        <Badge variant="violet">Prefill 阶段 · 子镜头轮播 (真实计算)</Badge>
-        <p className="mt-2 text-sm text-space-400">一次性并行计算所有输入 Token 的 Embedding、Q/K/V、Attention 与 FFN，并写入 KV Cache</p>
+        <Badge variant="violet">Prefill 阶段 · 可复算教学矩阵</Badge>
+        <p className="mt-2 text-sm text-space-400">并行处理输入序列，计算各层的 Q/K/V、Attention 与 FFN；各层 K/V 加入缓存，层输出继续向后传递。</p>
       </div>
 
       <div className="flex items-center justify-center gap-2">
@@ -612,7 +619,7 @@ export default function Pipeline() {
 
   const handleStart = useCallback(() => {
     if (!selectedCase) return;
-    setTokens(tokenize(selectedCase.question));
+    setTokens(tokenizeForDemo(selectedCase.question));
     setOutputTokens([]);
     setRevealedCount(0);
     setUseCache(null);
@@ -630,12 +637,7 @@ export default function Pipeline() {
 
   const handleBranch = useCallback((cache) => {
     setUseCache(cache);
-    let reply = [...selectedCase.reply];
-    if (batchSize > 1 && selectedCase.batchReply) {
-      for (let b = 2; b <= batchSize; b++) {
-        if (selectedCase.batchReply[b]) { reply.push(' | '); reply.push(...selectedCase.batchReply[b]); }
-      }
-    }
+    const reply = [...selectedCase.reply];
     setOutputTokens(reply);
     setRevealedCount(0);
     setStage('decoding');
@@ -647,15 +649,16 @@ export default function Pipeline() {
       const t = setTimeout(() => setStage('finished'), 500);
       return () => clearTimeout(t);
     }
-    const delay = useCache ? 220 : 500;
+    // 动画节奏固定，仅用于观察生成步骤，不表示两种分支的真实性能比例。
+    const delay = 320;
     const t = setTimeout(() => setRevealedCount((c) => c + 1), delay);
     return () => clearTimeout(t);
   }, [stage, revealedCount, outputTokens.length, useCache, isPlaying]);
 
   useEffect(() => {
     if (stage !== 'finished') return;
-    const s = calcStats(tokens.length, outputTokens.length, useCache, batchSize);
-    const alt = calcStats(tokens.length, outputTokens.length, !useCache, batchSize);
+    const s = calcStructuralCounts(tokens.length, outputTokens.length, useCache, batchSize);
+    const alt = calcStructuralCounts(tokens.length, outputTokens.length, !useCache, batchSize);
     setStats(s);
     setAltStats(alt);
   }, [stage, tokens.length, outputTokens.length, useCache, batchSize]);
@@ -681,15 +684,25 @@ export default function Pipeline() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="text-center">
-        <h1 className="text-headline text-gradient">推理流水线模拟器</h1>
-        <p className="mx-auto mt-2 max-w-xl text-sm text-space-400">选择问题与 Batch 模式，观察从 Token 化到生成的完整推理链路。</p>
+      <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-6 text-center md:px-8">
+        <div className="pointer-events-none absolute -left-20 -top-24 h-52 w-52 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="relative">
+          <Badge variant="cyan">M2 · INFERENCE PIPELINE</Badge>
+          <h1 className="mt-3 text-headline text-gradient">推理流水线模拟器</h1>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-space-400">使用项目知识库中的问题与定义，观察演示分词、Prefill、KV Cache 分支和逐步 Decode；标识符与矩阵仅用于过程追踪。</p>
+          <div className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2">
+            <Badge variant="slate">6 个知识库案例</Badge>
+            <Badge variant="slate">可暂停与逐步推进</Badge>
+            <Badge variant="amber">不展示伪实测性能</Badge>
+          </div>
+        </div>
       </div>
-
       {/* Stage Bar */}
-      <div className="rounded-xl border border-space-700/50 bg-space-900/50 p-4 backdrop-blur-md">
-        <div className="flex items-center justify-between gap-2">
-          {STAGES.map((s,i) => <StageNode key={s.key} index={i} label={s.label} active={i===stageIndex} done={i<stageIndex} panoramaId={s.panoramaId} navigate={navigate} />)}
+      <div className="panel-shell rounded-xl border border-space-700/50 bg-space-900/50 p-4 backdrop-blur-md">
+        <div className="overflow-x-auto pb-1">
+          <div className="flex min-w-[620px] items-center justify-between gap-2">
+            {STAGES.map((s,i) => <StageNode key={s.key} index={i} label={s.label} active={i===stageIndex} done={i<stageIndex} panoramaId={s.panoramaId} navigate={navigate} />)}
+          </div>
         </div>
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-space-800">
           <motion.div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500" animate={{ width: `${(stageIndex / (STAGES.length - 1)) * 100}%` }} transition={{ type: 'spring', stiffness: 120, damping: 18 }} />
@@ -718,18 +731,18 @@ export default function Pipeline() {
 
       {/* Main Content */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <GlowCard accent="cyan" className="min-h-[420px] p-5">
+        <GlowCard accent="cyan" className="panel-shell min-h-[460px] p-5">
           <AnimatePresence mode="wait">
             {stage === 'idle' && (
               <motion.div key="idle" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-5">
-                <div><h3 className="text-sm font-semibold text-space-200 mb-1">选择问题</h3><p className="text-xs text-space-500">前3个为生活常识，后3个为大模型推理概念</p></div>
+                <div><h3 className="text-sm font-semibold text-space-200 mb-1">选择问题</h3><p className="text-xs text-space-500">全部案例直接读取项目 knowledge.json 的定义字段，不生成事实性答案</p></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {CASES.map((c) => {
                     const isSelected = selectedCase?.id === c.id;
                     return (
-                      <GlowCard key={c.id} accent={isSelected ? 'cyan' : 'slate'} interactive onClick={() => handleSelectCase(c)} className={`p-3.5 ${isSelected ? 'ring-1 ring-cyan-400/40' : ''}`}>
+                      <GlowCard key={c.id} accent={isSelected ? 'cyan' : 'slate'} interactive onClick={() => handleSelectCase(c)} className={`module-card p-3.5 ${isSelected ? 'ring-1 ring-cyan-400/40' : ''}`}>
                         <div className="flex items-center gap-2 mb-2"><BookOpen size={14} className={isSelected ? 'text-cyan-400' : 'text-space-500'} /><span className={`text-sm font-semibold ${isSelected ? 'text-cyan-300' : 'text-space-300'}`}>{c.label}</span></div>
-                        <p className="text-xs text-space-500 leading-relaxed line-clamp-2">{c.question}</p>
+                        <p className="line-clamp-2 text-xs leading-relaxed text-space-500">{c.question}</p><p className="mt-2 truncate font-mono text-[9px] text-space-600">{c.sourceFile}</p>
                       </GlowCard>
                     );
                   })}
@@ -753,7 +766,7 @@ export default function Pipeline() {
                   <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-space-700/50 bg-space-950/40 p-3">
                     <span className="text-[11px] text-space-500 uppercase tracking-wider">已选问题</span>
                     <p className="mt-1 text-sm text-space-200">{selectedCase.question}</p>
-                    {batchSize > 1 && <p className="mt-1 text-[11px] text-cyan-400">Batch 模式：同时计算 {batchSize} 个请求</p>}
+                    {batchSize > 1 && <p className="mt-1 text-[11px] text-cyan-400">Batch 模式：复制该请求以展示批处理资源规模，不代表生成多个不同答案。</p>}
                   </motion.div>
                 )}
                 <button onClick={handleStart} disabled={!selectedCase} className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(34,211,238,0.25)] transition-all hover:shadow-[0_0_30px_rgba(34,211,238,0.4)] disabled:opacity-40 disabled:shadow-none">
@@ -765,15 +778,15 @@ export default function Pipeline() {
             {stage === 'prefill' && <PrefillView ref={prefillRef} tokens={tokens} isPlaying={isPlaying} onComplete={handlePrefillComplete} />}
             {stage === 'branch' && (
               <motion.div key="branch" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex h-full flex-col items-center justify-center gap-5">
-                <div className="text-center space-y-2"><Badge variant="amber">决策点</Badge><h3 className="text-base font-semibold text-space-200">是否启用 KV Cache？</h3><p className="text-xs text-space-500">KV Cache 可以避免 Decode 时重复计算，但会占用显存</p></div>
+                <div className="text-center space-y-2"><Badge variant="amber">决策点</Badge><h3 className="text-base font-semibold text-space-200">是否启用 KV Cache？</h3><p className="text-xs text-space-500">KV Cache 复用历史 Token 的 K/V 表示，减少对历史部分的重复计算，但会增加持久缓存容量。</p></div>
                 <div className="grid w-full max-w-md gap-3 sm:grid-cols-2">
                   <GlowCard accent="emerald" interactive onClick={() => handleBranch(true)} className="flex flex-col items-center gap-2 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"><Zap size={18} /></div>
-                    <span className="text-sm font-semibold text-space-200">启用 KV Cache</span><span className="text-xs text-space-500">快速生成，占用显存</span>
+                    <span className="text-sm font-semibold text-space-200">启用 KV Cache</span><span className="text-xs text-space-500">复用历史 K/V，增加缓存容量</span>
                   </GlowCard>
                   <GlowCard accent="rose" interactive onClick={() => handleBranch(false)} className="flex flex-col items-center gap-2 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-400"><AlertCircle size={18} /></div>
-                    <span className="text-sm font-semibold text-space-200">禁用 KV Cache</span><span className="text-xs text-space-500">慢速生成，节省显存</span>
+                    <span className="text-sm font-semibold text-space-200">禁用 KV Cache</span><span className="text-xs text-space-500">重算历史状态，不保留持久 K/V</span>
                   </GlowCard>
                 </div>
               </motion.div>
@@ -785,39 +798,38 @@ export default function Pipeline() {
         </GlowCard>
         <div className="space-y-4">
           {(stage === 'decoding' || stage === 'finished') && stats && (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-3">
-              <GlowCard accent={useCache ? 'emerald' : 'rose'} className="p-4">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-space-200"><Gauge size={16} className={useCache ? 'text-emerald-400' : 'text-rose-400'} />本次推理统计</h3>
-                <div className="mt-3 space-y-3">
-                  <StatRow icon={Clock} label="TTFT (首Token时间)" value={`${stats.ttft} ms`} />
-                  <StatRow icon={ChevronRight} label="TPOT (每Token时间)" value={`${stats.tpot} ms`} />
-                  <StatRow icon={Gauge} label="生成速度" value={`${stats.tokensPerSec} tok/s`} />
-                  <StatRow icon={MemoryStick} label="KV Cache 显存" value={`${stats.memoryMB} MB`} />
-                  <StatRow icon={Database} label="总耗时" value={`${stats.totalTime} ms`} />
-                  {batchSize > 1 && <StatRow icon={Layers2} label="Batch 大小" value={`${batchSize}`} />}
+            <div className="space-y-3">
+              <GlowCard accent={useCache ? 'emerald' : 'rose'} className="panel-shell p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div><h3 className="flex items-center gap-2 text-sm font-semibold text-space-200"><Gauge size={16} className={useCache ? 'text-emerald-400' : 'text-rose-400'} />结构计数</h3><p className="mt-1 text-[10px] text-space-600">不是硬件实测性能</p></div>
+                  <Badge variant={useCache ? 'emerald' : 'slate'}>{useCache ? '复用历史 K/V' : '重算历史状态'}</Badge>
+                </div>
+                <div className="mt-3 space-y-2.5">
+                  <StatRow icon={Layers2} label="Prefill 输入片段" value={`${stats.prefillTokens}`} />
+                  <StatRow icon={ChevronRight} label="Decode 生成步数" value={`${stats.decodeSteps}`} />
+                  <StatRow icon={Gauge} label="相对历史处理量" value={`${stats.relativeDecodeWork}`} />
+                  <StatRow icon={Database} label="缓存 K/V 向量组" value={`${stats.cachedVectors}`} />
                 </div>
               </GlowCard>
               {altStats && stage === 'finished' && (
-                <GlowCard accent="slate" className="p-4">
-                  <h3 className="text-xs font-semibold text-space-400">如果{useCache ? '禁用' : '启用'} KV Cache</h3>
-                  <div className="mt-2 space-y-2">
-                    <div className="flex justify-between text-xs"><span className="text-space-500">TPOT</span><span className="text-space-300">{altStats.tpot} ms</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-space-500">总耗时</span><span className="text-space-300">{altStats.totalTime} ms</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-space-500">显存占用</span><span className="text-space-300">{altStats.memoryMB} MB</span></div>
+                <GlowCard accent="slate" className="panel-shell p-4">
+                  <h3 className="text-xs font-semibold text-space-300">同一序列的结构对照</h3>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex justify-between text-xs"><span className="text-space-500">当前历史处理量</span><span className="font-mono text-space-300">{stats.relativeDecodeWork}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-space-500">另一分支处理量</span><span className="font-mono text-space-300">{altStats.relativeDecodeWork}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-space-500">当前缓存向量组</span><span className="font-mono text-space-300">{stats.cachedVectors}</span></div>
                   </div>
-                  <div className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 p-2 text-[11px] text-amber-300">
-                    {useCache ? `禁用后总耗时增加约 ${Math.round((altStats.totalTime / stats.totalTime - 1) * 100)}%，但节省显存` : `启用后总耗时减少约 ${Math.round((1 - altStats.totalTime / stats.totalTime) * 100)}%，但需额外显存`}
+                  <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/8 p-2.5 text-[11px] leading-relaxed text-amber-200">
+                    本页只展示结构计数；两条分支采用相同动画节奏，不转换为毫秒、吞吐或显存。真实性能需在指定模型、Tokenizer、硬件和推理引擎上测量。
                   </div>
                 </GlowCard>
               )}
-            </motion.div>
+            </div>
           )}
           {stage === 'finished' && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <button onClick={handleReset} className="flex w-full items-center justify-center gap-2 rounded-lg border border-space-600 bg-space-800/60 px-4 py-2.5 text-sm text-space-300 transition-all hover:border-cyan-500/30 hover:text-cyan-300">
-                <RotateCcw size={14} /> 重新开始
-              </button>
-            </motion.div>
+            <button onClick={handleReset} className="flex w-full items-center justify-center gap-2 rounded-xl border border-space-600 bg-space-800/60 px-4 py-2.5 text-sm text-space-300 transition-all hover:border-cyan-500/30 hover:text-cyan-300">
+              <RotateCcw size={14} /> 重新开始
+            </button>
           )}
         </div>
       </div>

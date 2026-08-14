@@ -1,10 +1,10 @@
-﻿import { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { MemoryStick, Network, BarChart3 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
 import {
   TABS, ARCHITECTURES, PRECISIONS,
-  calcKVCache, calcModelWeight
+  calcKVCache, calcModelWeight, getArchitectureKVHeads
 } from '../modules/lab/common.jsx';
 import KVCachePanel from '../modules/lab/KVCachePanel.jsx';
 import AttentionPanel from '../modules/lab/AttentionPanel.jsx';
@@ -23,26 +23,28 @@ export default function Lab() {
     batchSize: 1,
     precision: 'fp16',
     architecture: 'GQA',
+    attentionKernel: 'standard',
     gpuCount: 1,
     gpuMemory: 80,
     modelSize: 8,
+    parameterCountB: null,
+    referenceName: null,
+    kvLatentDim: 512,
+    ropeHeadDim: 64,
   });
 
-  // 联动：架构改变时自动更新 numKVHeads
   useEffect(() => {
     const arch = ARCHITECTURES[params.architecture];
-    if (!arch) return;
-    const newKVHeads = params.architecture === 'FlashAttention'
-      ? params.numHeads
-      : Math.max(1, Math.round(params.numHeads * arch.kvHeadRatio));
+    if (!arch || arch.kvMode === 'latent') return;
+    const newKVHeads = getArchitectureKVHeads(params.architecture, params.numHeads);
     if (newKVHeads !== params.numKVHeads) {
       setParams(p => ({ ...p, numKVHeads: newKVHeads }));
     }
-  }, [params.architecture, params.numHeads]);
+  }, [params.architecture, params.numHeads, params.numKVHeads]);
 
   const calcResult = useMemo(() => calcKVCache(params), [params]);
   const modelWeight = useMemo(() => calcModelWeight(params), [params]);
-  const baselineCalc = useMemo(() => calcKVCache({ ...params, numKVHeads: params.numHeads }), [params]);
+  const baselineCalc = useMemo(() => calcKVCache({ ...params, architecture: 'MHA', numKVHeads: params.numHeads }), [params]);
 
   const alerts = useMemo(() => {
     const list = [];
@@ -50,37 +52,48 @@ export default function Lab() {
     if (totalMem > params.gpuMemory) {
       const suggestedTP = Math.ceil(totalMem / params.gpuMemory);
       list.push({
-        msg: `显存超出单卡容量（需 ${totalMem.toFixed(1)}GB > ${params.gpuMemory}GB）。建议开启 TP=${suggestedTP} 张量并行，或启用 CPU Offload 卸载 KV Cache`,
+        msg: `估算容量超出单卡输入值（${totalMem.toFixed(1)} GiB > ${params.gpuMemory} GiB）。仅按容量下界至少需要 ${suggestedTP} 个分片；实际部署还需预留运行时空间。`,
+        type: 'warning',
+      });
+    }
+    if (params.hiddenSize % params.numHeads !== 0) {
+      list.push({
+        msg: '当前 hidden_size 不能被注意力头数整除，得到的 Head 维度不是整数；该组合仅能作为数学输入，不对应常见 Transformer 配置。',
         type: 'warning',
       });
     }
     if (params.seqLen > 32768 && params.architecture === 'MHA') {
       list.push({
-        msg: '长文本场景下 MHA 的 KV Cache 显存占用极高，建议切换至 GQA 或 MLA 架构',
+        msg: '在相同输入长度、批次和缓存精度下，MHA 的持久 KV Cache 容量通常高于采用较少 K/V 头的 GQA，或采用潜变量缓存的 MLA；实际配置应以目标模型为准。',
         type: 'warning',
       });
     }
     if (params.batchSize > 8 && params.precision === 'fp16') {
       list.push({
-        msg: '大批量推理时 FP16 显存压力大，可考虑 INT8 量化降低 KV Cache 占用',
+        msg: '批次增大会线性增加本页 KV Cache 容量估算；可单独评估权重量化或缓存精度方案，但真实精度、元数据和运行时开销由模型与推理引擎配置决定。',
         type: 'warning',
       });
     }
     if (list.length === 0) {
-      list.push({ msg: '当前配置在单卡范围内，显存充裕', type: 'success' });
+      list.push({ msg: '当前“权重载荷 + KV Cache”估算未超过单卡输入值；仍需预留激活值、临时张量、通信缓冲区和框架开销。', type: 'success' });
     }
     return list;
-  }, [calcResult.kvCacheGB, modelWeight, params.gpuMemory, params.seqLen, params.architecture, params.batchSize, params.precision]);
+  }, [calcResult.kvCacheGB, modelWeight, params.gpuMemory, params.seqLen, params.architecture, params.batchSize, params.precision, params.hiddenSize, params.numHeads]);
+
+  const kvHeadsLabel = ARCHITECTURES[params.architecture]?.kvMode === 'latent'
+    ? 'Latent'
+    : params.numKVHeads;
 
   return (
-    <div className="space-y-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold text-gradient">参数实验室工作台</h1>
-        <p className="text-sm text-space-400">调整参数，实时观察显存、架构与并行策略对推理的影响</p>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <div className="panel-shell relative overflow-hidden rounded-2xl border border-space-700/50 px-5 py-6 text-center md:px-8">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="relative"><Badge variant="emerald">M3 · PARAMETER LAB</Badge><h1 className="mt-3 text-2xl font-bold text-gradient">参数实验室工作台</h1>
+        <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-space-400">调整模型结构、上下文长度、精度与并行配置，复算 KV Cache 容量和权重容量；页面不把未经压测的性能倍率当作结论。</p></div>
       </div>
 
-      <div className="flex justify-center">
-        <div className="inline-flex rounded-xl border border-space-700/60 bg-space-900/50 p-1">
+      <div className="flex justify-center overflow-x-auto pb-1">
+        <div className="inline-flex min-w-max rounded-xl border border-space-700/60 bg-space-900/60 p-1">
           {TABS.map((tab) => {
             const Icon = ICON_MAP[tab.iconName];
             const isActive = activeTab === tab.key;
@@ -115,39 +128,32 @@ export default function Lab() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-space-700/40 bg-space-900/35 px-3 py-2 text-xs">
         <Badge variant="slate">Hidden={params.hiddenSize}</Badge>
         <Badge variant="slate">Layers={params.numLayers}</Badge>
         <Badge variant="slate">Heads={params.numHeads}</Badge>
-        <Badge variant="slate">KVHeads={params.numKVHeads}</Badge>
+        <Badge variant="slate">KV={kvHeadsLabel}</Badge>
         <Badge variant="slate">Seq={params.seqLen}</Badge>
         <Badge variant="slate">Batch={params.batchSize}</Badge>
         <Badge variant={params.precision === 'fp16' ? 'cyan' : params.precision === 'int8' ? 'violet' : 'amber'}>
           {PRECISIONS[params.precision].label}
         </Badge>
         <Badge variant="emerald">{params.architecture}</Badge>
+        {activeTab === 'attn' && <Badge variant="cyan">{params.attentionKernel === 'flash' ? 'FlashAttention' : '标准算子'}</Badge>}
         <Badge variant="slate">GPUx{params.gpuCount}</Badge>
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
-          transition={{ duration: 0.25 }}
-        >
-          {activeTab === 'kv' && (
-            <KVCachePanel params={params} setParams={setParams} calcResult={calcResult} modelWeight={modelWeight} alerts={alerts} />
-          )}
-          {activeTab === 'attn' && (
-            <AttentionPanel params={params} setParams={setParams} calcResult={calcResult} baselineCalc={baselineCalc} />
-          )}
-          {activeTab === 'parallel' && (
-            <ParallelPanel params={params} setParams={setParams} />
-          )}
-        </motion.div>
-      </AnimatePresence>
+      <div key={activeTab}>
+        {activeTab === 'kv' && (
+          <KVCachePanel params={params} setParams={setParams} calcResult={calcResult} modelWeight={modelWeight} alerts={alerts} />
+        )}
+        {activeTab === 'attn' && (
+          <AttentionPanel params={params} setParams={setParams} calcResult={calcResult} baselineCalc={baselineCalc} />
+        )}
+        {activeTab === 'parallel' && (
+          <ParallelPanel params={params} setParams={setParams} />
+        )}
+      </div>
     </div>
   );
 }

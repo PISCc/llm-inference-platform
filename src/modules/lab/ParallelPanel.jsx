@@ -1,165 +1,157 @@
 ﻿import { useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { Cpu, Zap, Layers, Network, ArrowRightLeft } from 'lucide-react';
+import { Cpu, Layers, Network, ArrowRightLeft, ShieldCheck, Info } from 'lucide-react';
 import GlowCard from '../../components/GlowCard.jsx';
 import Badge from '../../components/Badge.jsx';
-import {
-  SliderControl, MetricCard, SmartAlert,
-  calcParallelThroughput
-} from './common.jsx';
+import { SliderControl, MetricCard, SmartAlert } from './common.jsx';
+
+const TP_CANDIDATES = [1, 2, 4, 8, 16];
+
+function buildCapacityPlan(gpuCount, gpuMemory, modelSize) {
+  const weightGiB = modelSize * 1e9 * 2 / (1024 ** 3);
+  const minimumShards = Math.max(1, Math.ceil(weightGiB / gpuMemory));
+  const validTP = TP_CANDIDATES.filter((value) => value <= gpuCount && gpuCount % value === 0);
+  const tp = validTP.find((value) => value >= minimumShards) || validTP.at(-1) || 1;
+  const minimumPP = Math.max(1, Math.ceil(minimumShards / tp));
+  const maxPP = Math.max(1, Math.floor(gpuCount / tp));
+  const pp = Math.min(minimumPP, maxPP);
+  const replicaSize = tp * pp;
+  const dp = Math.floor(gpuCount / replicaSize);
+  const usedGpus = replicaSize * Math.max(dp, 1);
+  const replicaCapacityGiB = replicaSize * gpuMemory;
+  const fitsWeightsOnly = replicaCapacityGiB >= weightGiB;
+
+  return {
+    weightGiB,
+    minimumShards,
+    tp,
+    pp,
+    dp: fitsWeightsOnly ? Math.max(1, dp) : 0,
+    replicaSize,
+    usedGpus: Math.min(gpuCount, usedGpus),
+    idleGpus: Math.max(0, gpuCount - Math.min(gpuCount, usedGpus)),
+    replicaCapacityGiB,
+    fitsWeightsOnly,
+  };
+}
 
 export default function ParallelPanel({ params, setParams }) {
   const { gpuCount, gpuMemory, modelSize } = params;
+  const plan = useMemo(() => buildCapacityPlan(gpuCount, gpuMemory, modelSize), [gpuCount, gpuMemory, modelSize]);
 
-  const recommended = useMemo(() => {
-    const tp = modelSize > 40 ? 4 : modelSize > 13 ? 2 : 1;
-    const pp = gpuCount > tp ? Math.min(4, Math.floor(gpuCount / tp)) : 1;
-    const dp = Math.max(1, Math.floor(gpuCount / (tp * pp)));
-    return { tp, pp, dp, ep: 1 };
-  }, [gpuCount, modelSize]);
-
-  const throughput = useMemo(() => {
-    return calcParallelThroughput({ gpuCount, ...recommended, modelSize, bandwidth: 900 });
-  }, [gpuCount, recommended, modelSize]);
-
-  const topoData = useMemo(() => {
-    const nodes = [];
-    const cols = recommended.tp;
-    const rows = recommended.pp;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        nodes.push({ id: r * cols + c, row: r, col: c, label: `GPU-${r * cols + c + 1}` });
-      }
-    }
-    return { nodes, cols, rows };
-  }, [recommended]);
-
-  const memEnough = gpuCount * gpuMemory >= modelSize * 2;
+  const nodes = useMemo(() => {
+    return Array.from({ length: Math.min(gpuCount, plan.replicaSize) }, (_, index) => ({
+      id: index,
+      stage: Math.floor(index / plan.tp) + 1,
+      shard: index % plan.tp + 1,
+    }));
+  }, [gpuCount, plan.replicaSize, plan.tp]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-      <div className="lg:col-span-3 space-y-4">
-        <GlowCard accent="violet" className="p-4">
-          <h3 className="text-sm font-semibold text-space-200 mb-3 flex items-center gap-2">
-            <Cpu size={14} className="text-violet-400" /> 硬件参数
-          </h3>
-          <div className="space-y-4">
-            <SliderControl label="GPU 数量" value={params.gpuCount} min={1} max={16} step={1} unit="张" onChange={(v) => setParams(p => ({ ...p, gpuCount: v }))} accent="violet" />
-            <SliderControl label="单卡显存" value={params.gpuMemory} min={8} max={192} step={8} unit="GB" onChange={(v) => setParams(p => ({ ...p, gpuMemory: v }))} accent="violet" />
-            <SliderControl label="模型规模" value={params.modelSize} min={1} max={200} step={1} unit="B" onChange={(v) => setParams(p => ({ ...p, modelSize: v }))} tooltip="参数量（十亿）" accent="violet" />
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <div className="space-y-4 lg:col-span-3">
+        <GlowCard accent="violet" className="panel-shell p-4">
+          <div className="panel-title-row">
+            <div className="panel-icon panel-icon-violet"><Cpu size={15} /></div>
+            <div><h3 className="panel-title">容量输入</h3><p className="panel-kicker">WEIGHTS-ONLY LOWER BOUND</p></div>
+          </div>
+          <div className="mt-4 space-y-3">
+            <SliderControl label="GPU 数量" value={gpuCount} min={1} max={16} step={1} unit=" 张" onChange={(v) => setParams(p => ({ ...p, gpuCount: v }))} accent="violet" />
+            <SliderControl label="单卡标称显存" value={gpuMemory} min={8} max={192} step={8} unit=" GiB" onChange={(v) => setParams(p => ({ ...p, gpuMemory: v }))} accent="violet" />
+            <SliderControl label="模型参数量" value={modelSize} min={1} max={200} step={1} unit="B" onChange={(v) => setParams(p => ({ ...p, modelSize: v }))} tooltip="仅按参数量 × 2 字节估算 FP16/BF16 权重，不代表完整运行显存" accent="violet" />
           </div>
         </GlowCard>
-        <GlowCard accent="violet" className="p-4">
-          <h3 className="text-sm font-semibold text-space-200 mb-3">推荐配置</h3>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-space-400">张量并行 (TP)</span>
-              <Badge variant="violet">TP={recommended.tp}</Badge>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-space-400">流水线并行 (PP)</span>
-              <Badge variant="violet">PP={recommended.pp}</Badge>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-space-400">数据并行 (DP)</span>
-              <Badge variant="violet">DP={recommended.dp}</Badge>
-            </div>
+
+        <GlowCard accent="violet" className="panel-shell p-4">
+          <div className="panel-title-row">
+            <div className="panel-icon panel-icon-violet"><ShieldCheck size={15} /></div>
+            <div><h3 className="panel-title">容量可行组合</h3><p className="panel-kicker">NOT A PERFORMANCE RECOMMENDATION</p></div>
           </div>
-          <div className="mt-3 text-[11px] text-space-500">
-            总显存: {gpuCount * gpuMemory} GB · 模型需 ~{(params.modelSize * 2).toFixed(0)} GB (FP16)
+          <div className="mt-4 space-y-2.5">
+            <ConfigRow label="张量并行" value={`TP=${plan.tp}`} />
+            <ConfigRow label="流水线并行" value={`PP=${plan.pp}`} />
+            <ConfigRow label="完整副本数" value={plan.dp > 0 ? `DP=${plan.dp}` : '0'} />
+          </div>
+          <div className="mt-4 rounded-xl border border-space-700/50 bg-space-950/40 p-3 text-[11px] leading-relaxed text-space-500">
+            组合只验证 FP16/BF16 权重能否放入所选 GPU；未根据互联、并发、批次和延迟目标优化性能。
           </div>
         </GlowCard>
       </div>
 
-      <div className="lg:col-span-6 space-y-4">
-        <GlowCard accent="violet" className="p-4 h-80">
-          <h3 className="text-sm font-semibold text-space-200 mb-2">GPU 拓扑示意</h3>
-          <div className="flex items-center justify-center h-full">
-            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${topoData.cols}, minmax(0, 1fr))` }}>
-              {topoData.nodes.map((node) => (
-                <motion.div
-                  key={node.id}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: node.id * 0.05 }}
-                  className="relative flex flex-col items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 p-4 w-24 h-24"
-                >
-                  <Cpu size={20} className="text-violet-400 mb-1" />
-                  <span className="text-[10px] text-space-300">{node.label}</span>
-                  <span className="text-[9px] text-space-500">{node.row === 0 ? 'Layer 0-N' : `Layer ${node.row * 10}-${(node.row + 1) * 10}`}</span>
-                  {node.col < topoData.cols - 1 && (
-                    <div className="absolute right-0 top-1/2 w-3 h-0.5 bg-violet-500/40 translate-x-full" />
-                  )}
-                  {node.row < topoData.rows - 1 && (
-                    <div className="absolute bottom-0 left-1/2 w-0.5 h-3 bg-violet-500/40 translate-y-full" />
-                  )}
-                </motion.div>
-              ))}
+      <div className="space-y-4 lg:col-span-6">
+        <GlowCard accent="violet" className="panel-shell p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="panel-title-row">
+              <div className="panel-icon panel-icon-violet"><Network size={15} /></div>
+              <div><h3 className="panel-title">单副本拓扑</h3><p className="panel-kicker">TP SHARDS × PP STAGES</p></div>
             </div>
+            <Badge variant="violet">{plan.replicaSize} GPU / 副本</Badge>
           </div>
-        </GlowCard>
-        <GlowCard accent="violet" className="p-4">
-          <h3 className="text-sm font-semibold text-space-200 mb-3">并行策略说明</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-space-700/50 bg-space-900/30 p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Zap size={12} className="text-violet-400" />
-                <span className="text-xs font-semibold text-space-300">TP 张量并行</span>
+
+          <div className="mt-6 space-y-4">
+            {Array.from({ length: plan.pp }, (_, stageIndex) => (
+              <div key={stageIndex} className="rounded-2xl border border-space-700/50 bg-space-950/35 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-violet-300"><Layers size={13} />PP Stage {stageIndex + 1}</div>
+                  <span className="font-mono text-[10px] text-space-600">{plan.tp} TP shards</span>
+                </div>
+                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(plan.tp, 4)}, minmax(0, 1fr))` }}>
+                  {nodes.filter((node) => node.stage === stageIndex + 1).map((node) => (
+                    <div key={node.id} className="relative overflow-hidden rounded-xl border border-violet-500/25 bg-violet-500/8 p-3 text-center">
+                      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-400/70 to-transparent" />
+                      <Cpu size={17} className="mx-auto text-violet-400" />
+                      <div className="mt-2 text-xs font-semibold text-space-200">GPU {node.id + 1}</div>
+                      <div className="mt-0.5 font-mono text-[9px] text-space-500">TP shard {node.shard}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="text-[11px] text-space-500">切分 Attention/FFN 权重，适合单节点多卡，通信量大</div>
-            </div>
-            <div className="rounded-lg border border-space-700/50 bg-space-900/30 p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Layers size={12} className="text-violet-400" />
-                <span className="text-xs font-semibold text-space-300">PP 流水线并行</span>
-              </div>
-              <div className="text-[11px] text-space-500">切分层到不同设备，适合超长模型，有气泡开销</div>
-            </div>
-            <div className="rounded-lg border border-space-700/50 bg-space-900/30 p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <ArrowRightLeft size={12} className="text-violet-400" />
-                <span className="text-xs font-semibold text-space-300">DP 数据并行</span>
-              </div>
-              <div className="text-[11px] text-space-500">复制模型处理不同批次，扩展吞吐，显存复制多份</div>
-            </div>
-            <div className="rounded-lg border border-space-700/50 bg-space-900/30 p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Network size={12} className="text-violet-400" />
-                <span className="text-xs font-semibold text-space-300">EP 专家并行</span>
-              </div>
-              <div className="text-[11px] text-space-500">MoE 专用，不同专家放不同 GPU，需 All-to-All 通信</div>
-            </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <InfoTile icon={ArrowRightLeft} title="TP 通信" text="同一层的分片计算通常需要集合通信；开销取决于算子切分、互联带宽和消息规模。" />
+            <InfoTile icon={Layers} title="PP 气泡" text="流水线阶段可能等待上游或下游；幅度取决于微批数、阶段均衡和调度策略。" />
           </div>
         </GlowCard>
       </div>
 
-      <div className="lg:col-span-3 space-y-3">
-        <GlowCard accent="violet" className="p-4">
-          <h3 className="text-sm font-semibold text-space-200 mb-3">吞吐估算</h3>
-          <div className="space-y-2">
-            <MetricCard label="理论加速比" value={throughput.throughput} unit="x" accent="violet" />
-            <MetricCard label="TP 通信开销" value={throughput.commOverhead * 100} unit="%" accent="rose" />
-            <MetricCard label="PP 气泡开销" value={throughput.bubbleOverhead * 100} unit="%" accent="amber" />
+      <div className="space-y-3 lg:col-span-3">
+        <GlowCard accent="violet" className="panel-shell p-4">
+          <div className="panel-title-row">
+            <div className="panel-icon panel-icon-violet"><Info size={15} /></div>
+            <div><h3 className="panel-title">容量下界</h3><p className="panel-kicker">THEORETICAL PAYLOAD</p></div>
+          </div>
+          <div className="mt-4 space-y-2">
+            <MetricCard label="FP16/BF16 权重" value={plan.weightGiB} unit="GiB" accent="violet" />
+            <MetricCard label="最少分片数" value={plan.minimumShards} unit="张" accent="amber" digits={0} />
+            <MetricCard label="单副本标称容量" value={plan.replicaCapacityGiB} unit="GiB" accent={plan.fitsWeightsOnly ? 'emerald' : 'rose'} digits={0} />
+            <MetricCard label="未组成副本" value={plan.idleGpus} unit="张" accent="slate" digits={0} />
           </div>
         </GlowCard>
-        {!memEnough && (
-          <SmartAlert
-            message={`单卡显存不足：模型需 ~${(params.modelSize * 2).toFixed(0)}GB，总显存仅 ${gpuCount * gpuMemory}GB。建议开启 TP=${Math.ceil(params.modelSize * 2 / (gpuCount * gpuMemory))} 或启用 Offload`}
-            type="warning"
-          />
-        )}
-        {memEnough && (
-          <SmartAlert message="当前配置显存充足，可以正常加载模型" type="success" />
-        )}
-        <GlowCard accent="slate" className="p-3">
-          <h4 className="text-xs font-semibold text-space-300 mb-2">配置速查</h4>
-          <div className="text-[11px] text-space-500 space-y-1">
-            <div>Llama-3-8B: 1×A100 80G 单卡可跑</div>
-            <div>Llama-3-70B: 需 TP=8 (8×A100)</div>
-            <div>DeepSeek-V2: 需 TP=8 + PP=2</div>
+
+        <SmartAlert
+          type={plan.fitsWeightsOnly ? 'success' : 'warning'}
+          message={plan.fitsWeightsOnly
+            ? '所示组合在“仅权重”口径下可容纳模型；部署仍需为 KV Cache、激活值、通信缓冲区和框架预留显存。'
+            : '当前 GPU 总容量连 FP16/BF16 权重下界都无法满足，需要增加容量、增加 GPU 或降低权重精度。'}
+        />
+
+        <GlowCard accent="slate" className="panel-shell p-4">
+          <h4 className="text-xs font-semibold text-space-300">计算口径</h4>
+          <div className="mt-3 space-y-2 text-[11px] leading-relaxed text-space-500">
+            <div className="formula-chip">权重 GiB = 参数量 × 10⁹ × 2 ÷ 2³⁰</div>
+            <div>不输出吞吐、延迟或通信百分比，因为这些值必须由具体模型、硬件拓扑、框架和工作负载压测得到。</div>
           </div>
         </GlowCard>
       </div>
     </div>
   );
+}
+
+function ConfigRow({ label, value }) {
+  return <div className="flex items-center justify-between rounded-lg border border-space-700/40 bg-space-950/35 px-3 py-2 text-sm"><span className="text-space-400">{label}</span><Badge variant="violet">{value}</Badge></div>;
+}
+
+function InfoTile({ icon: Icon, title, text }) {
+  return <div className="rounded-xl border border-space-700/50 bg-space-900/45 p-3"><div className="flex items-center gap-2 text-xs font-semibold text-space-200"><Icon size={13} className="text-violet-400" />{title}</div><p className="mt-2 text-[11px] leading-relaxed text-space-500">{text}</p></div>;
 }

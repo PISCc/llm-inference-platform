@@ -291,20 +291,20 @@
       "categoryLabel": "内存与注意力",
       "day": 6,
       "dayLabel": "第 6 天",
-      "summary": "KV Cache 按固定大小块分配，消除显存碎片",
-      "definition": "PagedAttention 将 KV Cache 划分为固定大小的逻辑块（如 16 tokens/块），通过块表动态映射，避免传统连续分配导致的显存碎片。",
+      "summary": "KV Cache 按逻辑块管理，减少连续分配压力",
+      "definition": "PagedAttention 将 KV Cache 划分为固定大小的逻辑块，通过块表把逻辑块映射到物理块；块大小和回收策略由具体实现配置决定。",
       "problem": "不同请求序列长度差异大，连续分配 KV Cache 产生大量内部碎片，显存利用率低。",
       "steps": [
-        "KV Cache 划分为固定块",
-        "按需分配逻辑块",
-        "块表维护映射关系",
-        "物理块可共享/回收",
-        "支持 Copy-on-Write"
+        "KV Cache 划分为逻辑块",
+        "按需分配物理块",
+        "块表维护逻辑到物理映射",
+        "物理块按生命周期回收或共享",
+        "需要时执行 Copy-on-Write"
       ],
       "impact": [
-        "显存利用率 ↑",
-        "并发数 ↑",
-        "碎片 ↓"
+        "降低连续显存分配压力",
+        "提高空间管理灵活性",
+        "支持更高并发的可能性"
       ],
       "related": [
         "KV Cache",
@@ -313,7 +313,7 @@
       ],
       "source": "llm-inference-panorama.html",
       "englishTitle": "PagedAttention",
-      "plainExplanation": "把 KV Cache 切成固定大小的块来管理，按需分配和回收，消除显存碎片浪费。"
+      "plainExplanation": "把 KV Cache 切成可独立管理的块，按需分配和回收物理显存。"
     },
     {
       "id": "mm",
@@ -477,8 +477,8 @@
       "categoryLabel": "执行与计算",
       "day": 13,
       "dayLabel": "第 13 天",
-      "summary": "预捕获 Kernel 序列，消除启动开销",
-      "definition": "CUDA Graph 预先记录一次完整的 Kernel 执行序列，之后通过单次提交重放整个图，消除重复的 CPU 调度和 Kernel 启动延迟。",
+      "summary": "预捕获 Kernel 序列，减少重复提交开销",
+      "definition": "CUDA Graph 预先记录可重放的 Kernel 执行序列，后续通过较少的提交操作重放计算图，减少重复的 CPU 调度与 Kernel 启动开销；收益取决于图稳定性和工作负载。",
       "problem": "小 Batch 推理时，Kernel 启动时间占总延迟比例高，GPU 计算单元等待时间长。",
       "steps": [
         "Warmup 执行捕获图",
@@ -541,7 +541,7 @@
       "dayLabel": "第 13 天",
       "summary": "Transformer 中最核心的计算原语",
       "definition": "GEMM（General Matrix Multiply）是 QKV 投影、FFN、输出投影的基础运算，通过 cuBLAS、CUTLASS 或定制 Kernel 在 Tensor Core 上加速。",
-      "problem": "GEMM 占 Transformer 前向传播 60% 以上计算量，需充分利用 Tensor Core 和内存层次结构。",
+      "problem": "GEMM 是 Transformer 前向传播中的主要计算形式之一，实际占比随模型结构、序列阶段、算子融合和硬件实现变化。",
       "steps": [
         "矩阵分块（Tile）",
         "加载到共享内存",
@@ -561,7 +561,7 @@
       ],
       "source": "llm-inference-panorama.html",
       "englishTitle": "GEMM",
-      "plainExplanation": "矩阵乘法，是 Transformer 中最基础的计算操作，占推理计算量的绝大部分。"
+      "plainExplanation": "矩阵乘法是 QKV 投影、前馈网络和输出投影等模块的基础计算操作。"
     },
     {
       "id": "spec",
@@ -633,7 +633,7 @@
       "day": 4,
       "dayLabel": "第 4 天",
       "summary": "生成部分 Token 立即返回，降低感知延迟",
-      "definition": "流式输出（Streaming）在模型每生成一个 Token 后立即推送给客户端，用户无需等待完整序列生成，显著降低感知首字延迟。",
+      "definition": "流式输出（Streaming）在生成过程中分批向客户端推送增量内容，使用户无需等待完整序列结束即可看到结果；它改善感知等待，但不改变模型本身的首 Token 计算时间。",
       "problem": "非流式需等全部生成完毕才返回，长序列等待时间可达数十秒，用户体验差。",
       "steps": [
         "生成第一个 Token",
@@ -1066,7 +1066,7 @@
       "day": 8,
       "dayLabel": "第 8 天",
       "summary": "MoE 中的基本计算单元，本质是 FFN",
-      "definition": "Expert 是 MoE 中的独立 FFN 网络，每个专家擅长处理不同类型的输入模式，多个专家协同提升模型容量。",
+      "definition": "Expert 是 MoE 中相互独立的 FFN 子网络，路由器为每个 Token 选择少量专家参与计算；专家分工由训练过程形成，并不预先规定。",
       "problem": "单个 FFN 难以覆盖所有语义模式，多个专家分工可提升表达能力。",
       "steps": [
         "输入进入专家",
@@ -1087,7 +1087,7 @@
       ],
       "source": "llm-inference-panorama.html",
       "englishTitle": "Expert Network",
-      "plainExplanation": "MoE 中的基本计算单元，本质上是一个前馈网络，不同专家擅长处理不同类型的输入。"
+      "plainExplanation": "MoE 中的基本计算单元，本质上是独立的前馈网络，由路由器按 Token 选择参与计算。"
     },
     {
       "id": "router",
@@ -1281,8 +1281,8 @@
       "day": 7,
       "dayLabel": "第 7 天",
       "summary": "压缩 K、V 后存储，推理时解压还原",
-      "definition": "MLA（Multi-head Latent Attention）将 K、V 投影到低维隐空间存储，推理时通过上采样矩阵还原，显著减少 KV Cache 显存。",
-      "problem": "KV Cache 是长上下文推理的显存瓶颈，需在不显著损失质量的前提下压缩。",
+      "definition": "MLA（Multi-head Latent Attention）通过低秩联合压缩减少需要持久缓存的表示维度；具体缓存结构与容量取决于模型实现和公开配置。",
+      "problem": "长上下文会线性增加持久缓存容量，需要结合模型架构、上下文长度和实现方式评估压缩方案。",
       "steps": [
         "K、V 投影到低维空间",
         "存储压缩表示",
@@ -1302,7 +1302,7 @@
       ],
       "source": "llm-inference-panorama.html",
       "englishTitle": "MLA",
-      "plainExplanation": "把 KV 压缩到低维空间存储，推理时再还原，显著减少 KV Cache 的显存占用。"
+      "plainExplanation": "通过低秩表示减少需要持久缓存的维度，实际容量由模型的潜变量与位置编码配置决定。"
     },
     {
       "id": "quant",
@@ -1498,18 +1498,18 @@
       "day": 14,
       "dayLabel": "第 14 天",
       "summary": "单位时间能执行多少浮点运算",
-      "definition": "GPU 算力以 TFLOPS（每秒万亿次浮点运算）衡量，H100 FP16 Tensor Core 可达约 1000 TFLOPS，A100 约 312 TFLOPS。",
-      "problem": "算力决定 Prefill 阶段速度，需与模型计算量匹配。",
+      "definition": "GPU 计算峰值通常以 TFLOPS 表示，但具体数值必须同时注明 GPU SKU、计算精度、Tensor Core 模式和厂商规格；峰值不等于实际推理吞吐。",
+      "problem": "Prefill 通常包含大规模矩阵计算，需要将模型计算量、精度、算子实现与 GPU 峰值规格放在同一测试条件下评估。",
       "steps": [
-        "Tensor Core 加速",
-        "FP16/BF16 计算",
-        "矩阵乘法峰值",
-        "实际利用率通常 30-60%"
+        "确认 GPU 的具体 SKU",
+        "确认 FP16、BF16 或其他计算精度",
+        "核对厂商公布的峰值规格",
+        "结合算子和工作负载测量实际利用率"
       ],
       "impact": [
-        "Prefill 速度 ↑",
-        "大 Batch 吞吐 ↑",
-        "成本 ↑"
+        "帮助判断计算资源上限",
+        "不能单独推出端到端延迟",
+        "需要与显存带宽和通信能力一起评估"
       ],
       "related": [
         "GEMM",
@@ -1528,14 +1528,14 @@
       "day": 14,
       "dayLabel": "第 14 天",
       "summary": "能存储多大的模型和 KV Cache",
-      "definition": "GPU 显存容量（如 H100 80GB、A100 80GB）决定可容纳的模型参数量、KV Cache 大小和并发批处理规模。",
-      "problem": "大模型 + 长上下文 KV Cache 容易超出显存上限，需量化或分布式部署。",
+      "definition": "GPU 显存容量决定可分配给模型权重、KV Cache、激活值和运行时缓冲区的总预算；不同 GPU SKU 的容量不同，不能只用一个型号概括。",
+      "problem": "大模型权重与长上下文 KV Cache 可能共同超过可用显存，需要通过精度、并行方式、上下文长度和批次进行容量规划。",
       "steps": [
-        "模型权重占用",
-        "KV Cache 占用",
-        "激活值临时存储",
-        "总显存预算",
-        "超限则 OOM"
+        "估算模型权重载荷",
+        "估算 KV Cache 容量",
+        "预留激活值和运行时缓冲区",
+        "核对单卡与多卡容量预算",
+        "超出预算时调整部署方案"
       ],
       "impact": [
         "模型规模上限",
@@ -1559,19 +1559,18 @@
       "day": 14,
       "dayLabel": "第 14 天",
       "summary": "HBM 与计算单元间的数据搬运速度",
-      "definition": "显存带宽（如 H100 3.35 TB/s、A100 2 TB/s）决定权重和 KV Cache 从 HBM 加载到计算单元的速度，是 Decode 阶段的关键瓶颈。",
-      "problem": "Decode 阶段计算量小但访存量大（每次读取全部 KV Cache），带宽成为 TPOT 的主要决定因素。",
+      "definition": "显存带宽描述 HBM 与计算单元之间的数据搬运能力，具体数值取决于 GPU SKU、显存类型和厂商规格；Decode 是否受带宽限制还取决于工作负载和实现。",
+      "problem": "Decode 往往需要反复读取权重和历史 KV Cache，数据搬运可能成为瓶颈，但不能仅凭峰值带宽推出实际 TPOT。",
       "steps": [
-        "HBM 读取权重",
-        "HBM 读取 KV Cache",
-        "SRAM 缓存",
-        "计算单元执行",
-        "写回结果"
+        "确认 GPU SKU 与厂商带宽规格",
+        "分析权重和 KV Cache 的读取量",
+        "观察算子访存与缓存命中情况",
+        "结合工作负载测量 Decode 表现"
       ],
       "impact": [
-        "Decode 速度 ↑",
-        "TPOT ↓",
-        "带宽瓶颈"
+        "影响访存受限算子的上限",
+        "可能成为 Decode 瓶颈",
+        "不能单独代表端到端速度"
       ],
       "related": [
         "GPU 算力",
@@ -1621,19 +1620,18 @@
       "day": 14,
       "dayLabel": "第 14 天",
       "summary": "GPU 间专用高带宽互连总线",
-      "definition": "NVLink 是 NVIDIA GPU 间专用互联技术，H100 NVLink 4.0 提供 900 GB/s 双向带宽，远高于 PCIe 5.0 的 64 GB/s。",
-      "problem": "TP（张量并行）需要频繁同步参数梯度，PCIe 带宽不足成为通信瓶颈。",
+      "definition": "NVLink 是 GPU 间的专用互联技术，实际带宽、方向口径和拓扑取决于 GPU 代际、桥接方式、NVSwitch 与服务器设计。",
+      "problem": "张量并行等多卡推理需要在 GPU 间交换中间结果，互联带宽和拓扑会影响通信等待。",
       "steps": [
-        "GPU 通过 NVLink 直连",
-        "支持 P2P 内存访问",
-        "带宽 900 GB/s",
-        "降低通信延迟",
-        "支持最多 256 GPU 全连接"
+        "确认 GPU 与互联代际",
+        "确认直连、交换芯片或 PCIe 拓扑",
+        "确定通信集合与消息规模",
+        "结合框架和工作负载测量通信开销"
       ],
       "impact": [
-        "TP 通信 ↓",
-        "扩展性 ↑",
-        "成本 ↑"
+        "影响多卡通信上限",
+        "拓扑不匹配会增加等待",
+        "需要与并行策略一起评估"
       ],
       "related": [
         "NVSwitch",
@@ -1838,19 +1836,19 @@
       "day": 14,
       "dayLabel": "第 14 天",
       "summary": "消费级、专业卡、数据中心芯片",
-      "definition": "GPU 按定位分为消费级（RTX 4090）、专业工作站（RTX 6000 Ada）、数据中心（H100/A100/L40S），显存、算力和互联能力差异大。",
-      "problem": "不同场景（原型开发、生产部署、边缘推理）对 GPU 需求不同，需合理选型。",
+      "definition": "GPU 可按消费级、工作站级和数据中心级等定位分类；选型应依据显存容量、精度支持、互联拓扑、软件兼容性、功耗和预算等约束。",
+      "problem": "不同部署目标的资源约束不同，不能用“最高性能”或“性价比”这样的单一标签替代具体评测。",
       "steps": [
-        "消费级: 原型开发",
-        "专业卡: 工作站",
-        "数据中心: 生产部署",
-        "H100: 最高性能",
-        "L40S: 推理性价比"
+        "明确模型、精度和上下文长度",
+        "估算权重与 KV Cache 容量",
+        "核对算力、带宽和互联需求",
+        "确认软件栈与部署形态",
+        "在统一工作负载下比较成本与性能"
       ],
       "impact": [
-        "成本差异大",
-        "性能差异大",
-        "扩展性差异"
+        "影响可部署的模型规模",
+        "影响并行拓扑与扩展方式",
+        "影响整体采购和运维成本"
       ],
       "related": [
         "GPU 算力",
