@@ -46,13 +46,15 @@ export default function Lab() {
   }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
+    // 参考配置自带权威 K/V 头数（如 Llama 3 70B 为 8），不被 numHeads/4 通用推导覆盖
+    if (params.referenceName) return;
     const arch = ARCHITECTURES[params.architecture];
     if (!arch || arch.kvMode === 'latent') return;
     const newKVHeads = getArchitectureKVHeads(params.architecture, params.numHeads);
     if (newKVHeads !== params.numKVHeads) {
       setParams(p => ({ ...p, numKVHeads: newKVHeads }));
     }
-  }, [params.architecture, params.numHeads, params.numKVHeads]);
+  }, [params.architecture, params.numHeads, params.numKVHeads, params.referenceName]);
 
   const calcResult = useMemo(() => calcKVCache(params), [params]);
   const modelWeight = useMemo(() => calcModelWeight(params), [params]);

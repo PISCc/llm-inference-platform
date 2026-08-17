@@ -34,6 +34,18 @@ const COLUMNS = [
   },
 ];
 
+const RELATED_ALIASES = {
+  '流式输出': 'stream', 'PD 分离': 'pd', Batching: 'cb', Prefill: 'prefill_decode', Decode: 'prefill_decode',
+  'Block Table': 'paged', 'Attention 机制': 'attn', Attention: 'attn', 调度器: 'scheduler', Embedding: 'embed',
+  RoPE: 'embed', 残差连接: 'block', SwiGLU: 'ffn', 多头注意力: 'mask', GQA: 'mha',
+  'Expert Parallel': 'ep', GPTQ: 'awq', FP8: 'quant', 量化: 'quant', GPU算力: 'compute',
+  性能指标: 'metrics', 可观测性: 'obs', GPU利用率: 'util', 并行策略: 'tp_pp_dp', NVSwitch: 'nvlink',
+  PCIe: 'topo', TP: 'tp_pp_dp', PP: 'tp_pp_dp', CP: 'ep_cp_sp', 显存容量: 'vram', GPU型号: 'models',
+  'Kernel 优化': 'kernel', 硬件选型: 'models', 输入处理: 'api', 负载均衡: 'balance', 拓扑: 'topo', 配型建议: 'sizing',
+};
+
+const normalizeModuleName = (value) => String(value || '').toLowerCase().replace(/[\s&/()（）·,_-]/g, '');
+
 const GROUP_META = {
   arch: { label: 'Framework & Scheduling', labelZh: '推理框架与调度' },
   memory: { label: 'KV Cache & Memory', labelZh: '缓存与内存优化' },
@@ -113,6 +125,23 @@ export default function Panorama() {
     return byGroup;
   }, []);
 
+  const moduleNameMap = useMemo(() => {
+    const map = new Map();
+    for (const module of panoramaData.modules) {
+      for (const name of [module.id, module.title, module.englishTitle, ...(module.aliases || [])]) {
+        if (name) map.set(normalizeModuleName(name), module);
+      }
+    }
+    return map;
+  }, []);
+
+  const resolveRelated = (label) => {
+    const aliasId = RELATED_ALIASES[label] || RELATED_ALIASES[String(label).replace(/\s+/g, '')];
+    return (aliasId && panoramaData.modules.find((module) => module.id === aliasId))
+      || moduleNameMap.get(normalizeModuleName(label))
+      || null;
+  };
+
   const filteredModules = useMemo(() => {
     if (!query.trim()) return null;
     const q = query.toLowerCase();
@@ -162,7 +191,13 @@ export default function Panorama() {
         </div>
       )}
 
-      <ModuleModal module={selected} accent={selectedAccent} onClose={() => setSelected(null)} />
+      <ModuleModal
+        module={selected}
+        accent={selectedAccent}
+        onClose={() => setSelected(null)}
+        resolveRelated={resolveRelated}
+        onSelectRelated={setSelected}
+      />
     </div>
   );
 }
@@ -198,6 +233,7 @@ function Hero({ query, setQuery }) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索模块..."
+              aria-label="搜索推理技术模块"
               className="w-full rounded-lg border border-space-700 bg-space-900/70 py-2 pl-9 pr-4 text-sm text-space-200 outline-none ring-cyan-500/30 transition-all placeholder:text-space-600 focus:border-cyan-500/50 focus:ring-2"
             />
           </div>

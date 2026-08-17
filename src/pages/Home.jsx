@@ -7,15 +7,18 @@ import {
 import GlowCard from '../components/GlowCard.jsx';
 import Badge from '../components/Badge.jsx';
 import { cn } from '../utils/cn.js';
+import panoramaData from '../data/panorama.json';
+
+const MODULE_COUNT = panoramaData.modules.length;
 
 const MODULES = [
   {
     to: '/panorama',
     title: '互动全景图',
-    desc: '60 个核心模块，三栏总览推理架构、模型结构与硬件系统',
+    desc: `${MODULE_COUNT} 个核心模块，三栏总览推理架构、模型结构与硬件系统`,
     icon: Network,
     accent: 'cyan',
-    tags: ['60 模块', '可点击'],
+    tags: [`${MODULE_COUNT} 模块`, '可点击'],
   },
   {
     to: '/pipeline',
@@ -36,10 +39,10 @@ const MODULES = [
   {
     to: '/compare',
     title: '方案对比台',
-    desc: 'MHA / GQA / MQA / MLA、Dense / MoE、量化精度并排对比',
+    desc: 'Attention 架构、调度、Dense / MoE、量化精度四组并排对比',
     icon: Scale,
     accent: 'amber',
-    tags: ['3 组对比'],
+    tags: ['4 组对比'],
   },
   {
     to: '/diagnosis',
@@ -51,18 +54,18 @@ const MODULES = [
   },
   {
     to: '/agent',
-    title: 'AI 讲解智能体',
-    desc: '向 AI 提问，基于知识库获得通俗解释并跳转到对应模块',
+    title: 'AI 技术问答',
+    desc: '向 AI 提问，获得清晰的技术解释并跳转到相关模块',
     icon: Bot,
     accent: 'violet',
-    tags: ['RAG'],
+    tags: ['智能问答'],
   },
 ];
 
 const HIGHLIGHTS = [
   { icon: Eye, label: '看得见', desc: '把抽象推理过程变成可点击、可动画的交互' },
   { icon: Zap, label: '可尝试', desc: '拖动参数、切换方案，即时看到效果' },
-  { icon: MessageCircle, label: '可提问', desc: '用自然语言提问，AI 用知识库回答' },
+  { icon: MessageCircle, label: '可提问', desc: '用自然语言提问，快速获得技术解释' },
   { icon: BarChart3, label: '可对比', desc: '同目标多方案并排，看清技术取舍' },
 ];
 
@@ -128,7 +131,7 @@ export default function Home() {
             className="mt-10 grid grid-cols-3 gap-4 border-t border-space-700/50 pt-8"
           >
             {[
-             { value: '60+', label: '知识模块' },
+             { value: MODULE_COUNT, label: '知识模块' },
              { value: '6', label: '互动模块' },
               { value: '∞', label: '探索路径' },
             ].map((s) => (

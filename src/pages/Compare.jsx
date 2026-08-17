@@ -3,13 +3,14 @@ import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Boxes, Binary, ArrowRight, ArrowUpRight, CheckCircle2,
-  AlertTriangle, Database, Gauge, Layers3, Route, Rows3, Workflow
+  AlertTriangle, Database, Gauge, Layers3, Network, Route, Rows3, Workflow
 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
 import ProductHeader from '../components/ProductHeader.jsx';
-import { PRECISIONS, SliderControl } from '../modules/lab/common.jsx';
+import { ARCHITECTURES, PRECISIONS, SliderControl, calcKVCache, getArchitectureKVHeads } from '../modules/lab/common.jsx';
 
 const TABS = [
+  { id: 'attention', label: 'Attention 架构', icon: Network, accent: 'violet' },
   { id: 'scheduling', label: '调度与组批', icon: Layers3, accent: 'cyan' },
   { id: 'moe', label: 'Dense 与 MoE', icon: Boxes, accent: 'violet' },
   { id: 'quant', label: '权重量化', icon: Binary, accent: 'amber' },
@@ -85,6 +86,54 @@ const MODEL_ORGANIZATION_DETAILS = [
   },
 ];
 
+const MODEL_EXAMPLES = {
+  dense: [
+    {
+      name: 'Llama 3.1 70B',
+      scale: '70B 总参数 · 全量激活',
+      tag: '通用大模型',
+      reason: '每个 Token 经过同一组完整参数，计算路径固定，便于使用成熟的张量并行与推理框架获得稳定表现。',
+      tradeoff: '部署逻辑相对直接，但每个 Token 都承担完整的 70B 参数计算与权重访问成本。',
+    },
+    {
+      name: 'Qwen3-8B',
+      scale: '约 8B 总参数 · 全量激活',
+      tag: '本地与单机',
+      reason: '中小规模 Dense 模型不需要专家路由，适合本地设备、单机服务和强调兼容性的部署环境。',
+      tradeoff: '推理路径简单、延迟更容易预测，但模型容量与单 Token 计算量会同步增长。',
+    },
+    {
+      name: 'Qwen3-32B',
+      scale: '约 32B 总参数 · 全量激活',
+      tag: '稳定多卡部署',
+      reason: '以完整参数参与每次前向，避免专家负载不均和 All-to-All 通信，适合优先保证稳定执行路径的多卡部署。',
+      tradeoff: '能力容量直接对应计算开销，对显存、带宽和并行切分要求更高。',
+    },
+  ],
+  moe: [
+    {
+      name: 'Qwen3-30B-A3B',
+      scale: '约 30B 总参数 · 约 3B 激活',
+      tag: '低激活计算',
+      reason: '通过稀疏激活扩大总参数容量，同时把单 Token 激活参数控制在约 3B，适合追求容量与计算效率平衡的场景。',
+      tradeoff: '需要 Router、专家放置和负载均衡支持，实际速度仍取决于推理引擎与硬件拓扑。',
+    },
+    {
+      name: 'DeepSeek-V3',
+      scale: '671B 总参数 · 37B 激活',
+      tag: '超大规模容量',
+      reason: '以较小的单 Token 激活参数承载超大总参数容量，使模型规模扩展不必等比例增加每次前向计算量。',
+      tradeoff: '对专家并行、跨卡通信、路由均衡和高并发运行时提出更高要求。',
+    },
+    {
+      name: 'Mixtral 8×7B',
+      scale: '8 个专家 · 每 Token 选择 2 个',
+      tag: '经典稀疏专家',
+      reason: '每个 Token 只进入部分专家，以接近较小 Dense 模型的活跃计算获得更大的专家参数容量。',
+      tradeoff: '总权重仍需加载到设备，低并发或通信受限时不一定比同级 Dense 模型更快。',
+    },
+  ],
+};
 const PRECISION_DETAILS = {
   fp16: {
     color: 'cyan',
@@ -197,9 +246,9 @@ function PageHeader() {
         accent="amber"
         badges={[{ label: '优势 · 局限 · 适用场景', variant: 'amber' }, { label: '机制与验证边界' }]}
       />
-      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+      <div className="grid grid-cols-2 gap-2 text-center text-xs md:grid-cols-4">
         {[
-          ['3', '调度策略'], ['2', '模型组织方式'], ['3', '权重精度'],
+          ['4', '注意力架构'], ['3', '调度策略'], ['2', '模型组织方式'], ['3', '权重精度'],
         ].map(([value, label]) => (
           <div key={label} className="rounded-xl border border-space-700/50 bg-space-950/40 px-3 py-2.5">
             <div className="font-mono text-lg font-bold text-amber-300">{value}</div>
@@ -343,6 +392,67 @@ function RoutingDiagram({ expertCount, topK, pattern }) {
   );
 }
 
+function ModelExamples() {
+  return (
+    <section className="rounded-2xl border border-space-700/50 bg-space-950/30 p-4 md:p-5">
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="font-semibold text-space-100">代表模型案例</h2>
+          <p className="mt-1 text-xs text-space-500">结合真实模型观察两种结构的典型使用方式；结构不同不直接代表能力高低。</p>
+        </div>
+        <Badge variant="violet">3 个 Dense · 3 个 MoE</Badge>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {[
+          ['dense', 'Dense 模型', '全部参数参与每个 Token 的前向计算', Layers3, 'cyan'],
+          ['moe', 'MoE 模型', '通过 Router 为每个 Token 选择少量专家', Boxes, 'violet'],
+        ].map(([type, title, description, Icon, color]) => (
+          <div key={type} className={`rounded-2xl border p-4 ${type === 'dense' ? 'border-cyan-500/25 bg-cyan-500/[0.035]' : 'border-violet-500/25 bg-violet-500/[0.035]'}`}>
+            <div className="flex items-center gap-3 border-b border-space-700/45 pb-3">
+              <span className={`flex h-9 w-9 items-center justify-center rounded-xl border ${type === 'dense' ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300' : 'border-violet-500/30 bg-violet-500/10 text-violet-300'}`}>
+                <Icon size={18} />
+              </span>
+              <div>
+                <h3 className="text-sm font-semibold text-space-100">{title}</h3>
+                <p className="mt-0.5 text-[11px] text-space-500">{description}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {MODEL_EXAMPLES[type].map((model) => (
+                <article key={model.name} className="rounded-xl border border-space-700/50 bg-space-950/45 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h4 className="text-sm font-semibold text-space-100">{model.name}</h4>
+                      <p className={`mt-1 font-mono text-[10px] ${type === 'dense' ? 'text-cyan-300' : 'text-violet-300'}`}>{model.scale}</p>
+                    </div>
+                    <Badge variant={color}>{model.tag}</Badge>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] p-3">
+                      <div className="text-[10px] font-semibold text-emerald-300">为什么适合这种结构</div>
+                      <p className="mt-1.5 text-[11px] leading-5 text-space-400">{model.reason}</p>
+                    </div>
+                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] p-3">
+                      <div className="text-[10px] font-semibold text-amber-300">部署时要注意</div>
+                      <p className="mt-1.5 text-[11px] leading-5 text-space-400">{model.tradeoff}</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-space-700/50 bg-space-900/45 p-4">
+        <div className="text-xs font-semibold text-space-300">如何理解这些案例</div>
+        <p className="mt-2 text-xs leading-6 text-space-500">同一模型家族也可以同时提供 Dense 与 MoE 版本。中小规模、低并发或拓扑简单时，Dense 往往更容易部署；希望扩大总参数容量且具备专家并行与通信优化能力时，MoE 更有吸引力。</p>
+      </div>
+    </section>
+  );
+}
 function MoeComparison({ navigate }) {
   const [baseParams, setBaseParams] = useState(8);
   const [expertSize, setExpertSize] = useState(4);
@@ -383,6 +493,8 @@ function MoeComparison({ navigate }) {
         accent="violet"
         badge="选型边界"
       />
+
+      <ModelExamples />
 
       <div className="rounded-2xl border border-space-700/50 bg-space-950/30 p-4 md:p-5">
         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between"><div><h2 className="flex items-center gap-2 font-semibold text-space-100"><Gauge size={17} className="text-violet-400" />结构与路由验证工具</h2><p className="mt-1 text-xs text-space-500">公式和负载示意只用于核对结构边界，是选型结论的辅助证据。</p></div><Badge variant="slate">辅助证据</Badge></div>
@@ -472,6 +584,183 @@ function QuantComparison({ navigate }) {
   );
 }
 
+const ATTENTION_DETAILS = [
+  {
+    id: 'MHA', name: 'MHA', label: 'Multi-Head Attention', color: 'cyan',
+    summary: '每个 Query 头各配一组 K/V 头，KV Cache 与 Q 头数 1:1。',
+    advantage: '结构直接、与标准公式一一对应，多数框架与算子的默认路径兼容性最好。',
+    limitation: 'K/V 头数最多，同等序列与批次下持久 KV Cache 容量最大，长上下文时显存压力更高。',
+    fit: '显存预算充足、优先兼容性与可预测性、头数规模适中的部署。',
+    choice: '当容量不是主要约束、希望执行路径最标准时选择。',
+    mechanism: 'Q 头与 K/V 头一一对应，缓存所有头的 K/V。',
+    kvHeads: '与 Query 头数相同',
+    kvSize: '最大：容量随 K/V 头数线性增长',
+  },
+  {
+    id: 'GQA', name: 'GQA', label: 'Grouped-Query Attention', color: 'violet',
+    summary: '多组 Query 头共享较少的 K/V 头，组数由模型配置决定。',
+    advantage: '在接近 MHA 表达能力的同时降低持久 KV Cache 容量，是当前多数大模型默认选择。',
+    limitation: '共享组数与权重设计需按模型核对，不能简单取 Q 头数 1/4 当作任意模型事实。',
+    fit: '在线服务与长上下文为主、需要在容量与质量间折中的场景。',
+    choice: '需要降低 KV 容量且模型本身采用 GQA 配置时选择。',
+    mechanism: '把 Query 头分成若干组，每组共享一组 K/V 头。',
+    kvHeads: '少于 Query 头数（如 Llama 3 70B 为 8）',
+    kvSize: '低于 MHA：容量随实际 K/V 头数下降',
+  },
+  {
+    id: 'MQA', name: 'MQA', label: 'Multi-Query Attention', color: 'amber',
+    summary: '全部 Query 头共享同一组 K/V 头。',
+    advantage: 'KV Cache 容量在所有共享方案中最低，实现简单。',
+    limitation: '共享程度最高，质量与训练稳定性通常不如 GQA/MLA，现代新模型已较少单独采用。',
+    fit: '容量极端受限、对单头表达能力要求不高的场景。',
+    choice: '只在容量约束极强且验证质量可接受时选择。',
+    mechanism: '所有 Query 头共享 1 组 K/V 头。',
+    kvHeads: '1 组',
+    kvSize: '远低于 MHA：与 Q 头数无关',
+  },
+  {
+    id: 'MLA', name: 'MLA', label: 'Multi-head Latent Attention', color: 'emerald',
+    summary: '缓存低秩潜变量与解耦 RoPE 分量，用较小缓存保持表达能力。',
+    advantage: '持久缓存维度由公开潜变量配置决定，可明显低于同等 Q 头数的 MHA。',
+    limitation: '依赖支持 MLA 的推理栈与公开配置（如 DeepSeek-V2），结构比标准 Attention 复杂。',
+    fit: '推理栈已支持 MLA、且追求长上下文缓存效率的场景。',
+    choice: '目标模型为 MLA 且运行时支持该结构时选择。',
+    mechanism: '缓存低秩潜变量（kv_lora_rank）与解耦 RoPE 分量（qk_rope_head_dim）。',
+    kvHeads: '按公开潜变量维度（如 DeepSeek-V2: 512+64）',
+    kvSize: '通常低于同等 Q 头数的 MHA，与潜变量维度相关',
+  },
+];
+
+function AttentionComparison({ navigate }) {
+  const [seqLen, setSeqLen] = useState(8192);
+  const [numHeads, setNumHeads] = useState(32);
+  const base = { hiddenSize: 4096, numLayers: 32, seqLen, batchSize: 1, precision: 'fp16' };
+  const bars = ATTENTION_DETAILS.map((item) => {
+    const calc = calcKVCache({
+      ...base,
+      numHeads,
+      architecture: item.id,
+      numKVHeads: getArchitectureKVHeads(item.id, numHeads),
+    });
+    return {
+      ...item,
+      kvGiB: calc.kvCacheGB,
+      structure: calc.isLatent ? `${calc.latentWidth} 维潜变量/层/Token` : `${calc.effectiveKVHeads} 个 K/V 头`,
+    };
+  });
+  const maxGiB = Math.max(...bars.map((b) => b.kvGiB), 1e-4);
+  const headDim = (4096 / numHeads).toFixed(0);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-space-100">Attention 架构选型结论</h2>
+            <p className="mt-1 text-xs text-space-500">K/V 共享方式决定持久 KV Cache 容量，也改变实现与部署边界；容量按公式计算，非实测。</p>
+          </div>
+          <Badge variant="violet">并排比较</Badge>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {ATTENTION_DETAILS.map((item) => (
+            <div key={item.id} className={`rounded-2xl border p-5 ${item.color === 'cyan' ? 'border-cyan-500/30 bg-cyan-500/[0.055]' : item.color === 'violet' ? 'border-violet-500/30 bg-violet-500/[0.055]' : item.color === 'amber' ? 'border-amber-500/30 bg-amber-500/[0.055]' : 'border-emerald-500/30 bg-emerald-500/[0.055]'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <Badge variant={item.color}>{item.name}</Badge>
+                  <h3 className="mt-3 text-xl font-bold text-space-100">{item.label}</h3>
+                </div>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-space-400">{item.summary}</p>
+              <div className="mt-4"><TradeoffSummary advantage={item.advantage} limitation={item.limitation} fit={item.fit} compact /></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <ComparisonTable
+        title="Attention 架构完整对照"
+        description="先比较选型结论，再按结构差异判断 KV Cache 容量与实现条件；共享方式不直接等同于固定质量差异。"
+        columns={ATTENTION_DETAILS}
+        rows={[
+          { label: '核心机制', key: 'mechanism' },
+          { label: 'K/V 头数', key: 'kvHeads' },
+          { label: 'KV Cache 容量关系', key: 'kvSize' },
+          { label: '主要局限', key: 'limitation' },
+          { label: '适用场景', key: 'fit' },
+          { label: '选择条件', key: 'choice' },
+        ]}
+        accent="violet"
+        badge="结构与容量对照"
+      />
+
+      <div className="rounded-2xl border border-space-700/50 bg-space-950/30 p-4 md:p-5">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 font-semibold text-space-100"><Database size={17} className="text-violet-400" />KV Cache 容量对比</h2>
+            <p className="mt-1 text-xs text-space-500">按公式计算同一输入下的持久 KV Cache 容量；不输出延迟、吞吐或显存峰值。</p>
+          </div>
+          <Badge variant="slate">公式结果</Badge>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+          <div className="space-y-3 rounded-2xl border border-space-700/50 bg-space-900/55 p-4">
+            <div className="rounded-xl border border-space-700/40 bg-space-950/30 p-3">
+              <div className="mb-2 text-sm font-medium text-space-200">注意力头数</div>
+              <div className="flex flex-wrap gap-2">
+                {[8, 16, 32, 64, 128].map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setNumHeads(h)}
+                    className={`rounded-lg border px-3 py-1.5 font-mono text-xs transition-all ${numHeads === h ? 'border-violet-400/45 bg-violet-500/15 text-violet-300' : 'border-space-700/50 bg-space-950/35 text-space-400 hover:border-space-600 hover:text-space-200'}`}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-space-600">Head 维度 = 4096 / {numHeads} = {headDim}</p>
+            </div>
+            <SliderControl label="序列长度" value={seqLen} min={1024} max={32768} step={1024} unit=" Token" accent="violet" onChange={setSeqLen} />
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-3 text-[11px] leading-relaxed text-space-400">
+              计算式：KV = 2 × L × H_kv × d_h × S × B × bytes；这里固定 L=32、d=4096、Batch=1、FP16，便于横向比较架构差异。
+            </div>
+          </div>
+          <div className="space-y-3">
+            {bars.map((b) => (
+              <div key={b.id} className="rounded-xl border border-space-700/50 bg-space-900/45 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={b.color}>{b.name}</Badge>
+                    <span className="text-xs text-space-500">{b.structure}</span>
+                  </div>
+                  <span className="font-mono text-xs font-semibold text-space-200">{b.kvGiB.toFixed(2)} GiB</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-space-800">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(b.kvGiB / maxGiB) * 100}%` }}
+                    className={`h-full rounded-full ${b.color === 'cyan' ? 'bg-cyan-400' : b.color === 'violet' ? 'bg-violet-400' : b.color === 'amber' ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                  />
+                </div>
+              </div>
+            ))}
+            <p className="text-[11px] leading-relaxed text-space-600">GQA/MQA 的容量按实际 K/V 头数计算；MLA 按公开潜变量维度计算。M4 只复用 M3 的同一套公式，不重复维护第二套口径。</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-4 md:flex-row md:items-center md:justify-between">
+        <p className="text-sm leading-relaxed text-space-300">完整调参与 FlashAttention 对比请进入参数实验室；容量与质量权衡需结合目标模型的公开配置验证。</p>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button type="button" onClick={() => navigate('/lab', { state: { tab: 'attn' } })} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">进入实验室调参 <ArrowRight size={14} /></button>
+          <button type="button" onClick={() => navigate('/panorama', { state: { moduleId: 'attn' } })} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm text-violet-300">查看注意力条目 <ArrowUpRight size={14} /></button>
+          <button type="button" onClick={() => navigate('/panorama', { state: { moduleId: 'kv' } })} className="inline-flex items-center gap-1.5 rounded-lg border border-space-600 bg-space-800/60 px-3 py-2 text-sm text-space-300">查看 KV 机制 <ArrowUpRight size={14} /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function Compare() {
   const [activeTab, setActiveTab] = useState('scheduling');
   const navigate = useNavigate();
@@ -480,7 +769,7 @@ export default function Compare() {
   useEffect(() => {
     const requestedTab = location.state?.tab;
     if (requestedTab) {
-      const normalizedTab = requestedTab === 'attention' ? 'scheduling' : requestedTab;
+      const normalizedTab = requestedTab;
       setActiveTab(TABS.some((tab) => tab.id === normalizedTab) ? normalizedTab : 'scheduling');
       navigate(location.pathname, { replace: true, state: null });
     }
@@ -491,6 +780,7 @@ export default function Compare() {
       <PageHeader />
       <SectionTabs activeTab={activeTab} setActiveTab={setActiveTab} />
       <div key={activeTab}>
+        {activeTab === 'attention' && <AttentionComparison navigate={navigate} />}
         {activeTab === 'scheduling' && <SchedulingComparison navigate={navigate} />}
         {activeTab === 'moe' && <MoeComparison navigate={navigate} />}
         {activeTab === 'quant' && <QuantComparison navigate={navigate} />}

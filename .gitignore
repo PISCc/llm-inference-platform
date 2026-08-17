@@ -28,3 +28,6 @@ Thumbs.db
 
 # Backups are stored outside the repository
 backups/
+
+# Tunnel binary kept outside version control
+tools/

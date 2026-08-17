@@ -1,8 +1,19 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Cpu, Network, FlaskConical, Scale, ScanSearch, Bot, Home } from 'lucide-react';
 import { cn } from '../utils/cn.js';
 import TechBackground from './TechBackground.jsx';
+
+const PAGE_META = {
+  '/': { title: '首页 · LLM 推理实验室', description: '系统化呈现大模型推理架构、模型结构、缓存、性能和硬件部署。' },
+  '/panorama': { title: '推理技术全景图 · LLM 推理实验室', description: '检索并查看大模型推理架构、模型结构与硬件系统的核心技术模块。' },
+  '/pipeline': { title: '推理流水线模拟器 · LLM 推理实验室', description: '逐步观察分词、Prefill、KV Cache 与 Decode 的推理数据流。' },
+  '/lab': { title: '参数实验室 · LLM 推理实验室', description: '调整模型与部署参数，复算 KV Cache、权重容量和注意力结构。' },
+  '/compare': { title: '技术方案对比台 · LLM 推理实验室', description: '比较调度、注意力架构、MoE 与量化方案的机制和适用边界。' },
+  '/diagnosis': { title: '推理链路诊断台 · LLM 推理实验室', description: '根据 TTFT、TPOT、OOM 和吞吐现象形成证据驱动的诊断路径。' },
+  '/agent': { title: '技术问答 · LLM 推理实验室', description: '基于本地知识库检索大模型推理技术概念并联动相关模块。' },
+};
 
 const NAV = [
   { to: '/', label: '首页', icon: Home, end: true },
@@ -11,11 +22,24 @@ const NAV = [
   { to: '/lab', label: '实验室', icon: FlaskConical },
   { to: '/compare', label: '对比台', icon: Scale },
   { to: '/diagnosis', label: '诊断台', icon: ScanSearch },
-  { to: '/agent', label: 'AI 讲解', icon: Bot },
+  { to: '/agent', label: 'AI 问答', icon: Bot },
 ];
 
 export default function Layout() {
   const { pathname } = useLocation();
+
+  useEffect(() => {
+    const meta = PAGE_META[pathname] || PAGE_META['/'];
+    document.title = meta.title;
+    let description = document.querySelector('meta[name="description"]');
+    if (!description) {
+      description = document.createElement('meta');
+      description.setAttribute('name', 'description');
+      document.head.appendChild(description);
+    }
+    description.setAttribute('content', meta.description);
+  }, [pathname]);
+
   return (
     <div className="relative flex min-h-screen flex-col bg-space-950 bg-grid">
       <TechBackground />

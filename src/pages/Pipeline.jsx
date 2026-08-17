@@ -30,7 +30,6 @@ const CASES = KNOWLEDGE_CASE_IDS.map((id) => {
     question: `什么是${entry.title}？`,
     answer: entry.definition,
     reply: splitForAnimation(entry.definition),
-    sourceFile: entry.sourceFile,
   };
 }).filter(Boolean);
 const STAGES = [
@@ -93,7 +92,7 @@ function TokenizingView({ tokens }) {
   useEffect(() => { setVisibleCount(0); }, [tokens]);
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 px-2">
-      <div className="text-center"><Badge variant="cyan">分词中</Badge><p className="mt-2 text-xs text-space-500">使用确定性的演示分词规则拆分文本，并生成仅用于本页追踪的演示 ID</p></div>
+      <div className="text-center"><Badge variant="cyan">分词中</Badge><p className="mt-2 text-xs text-space-500">按字符与术语拆分输入文本，依次展示 Token 与 TokenID 的形成过程</p></div>
       <div className="w-full max-w-lg space-y-2">
         {tokens.map((tok,i) => {
           const isVisible = i < visibleCount;
@@ -114,7 +113,7 @@ function TokenizingView({ tokens }) {
       </div>
       {visibleCount >= tokens.length && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs text-emerald-300">
-          当前演示得到 {tokens.length} 个片段；真实 Token 与 TokenID 由所选模型的 Tokenizer 词表决定。
+          当前输入被拆分为 {tokens.length} 个 Token；不同模型的 Tokenizer 可能得到不同结果。
         </motion.div>
       )}
     </div>
@@ -122,10 +121,10 @@ function TokenizingView({ tokens }) {
 }
 
 const PREfill_SHOTS = [
-  { key: 'embedding', label: 'Embedding', desc: 'Token 嵌入 + 位置信息 = 输入向量（教学矩阵）' },
-  { key: 'qkv',     label: 'Q/K/V 投影',  desc: '矩阵乘法：X·Wq=Q，X·Wk=K，X·Wv=V（固定演示权重）' },
-  { key: 'attention', label: '自注意力',  desc: 'softmax(Q·Kᵀ/√d)·V（由演示矩阵计算）' },
-  { key: 'ffn',     label: '残差+FFN', desc: '残差连接 → LayerNorm → 升维 → GELU → 降维' },
+  { key: 'embedding', label: 'Embedding', desc: 'Token 嵌入与示意位置信息组合为输入向量' },
+  { key: 'qkv',     label: 'Q/K/V 投影',  desc: '矩阵乘法：X·Wq=Q，X·Wk=K，X·Wv=V' },
+  { key: 'attention', label: '因果自注意力',  desc: 'softmax(mask(Q·Kᵀ/√d))·V' },
+  { key: 'ffn',     label: '残差+FFN', desc: '归一化、前馈变换与残差连接；具体结构取决于模型' },
 ];
 
 function generateRealData(tokens) {
@@ -162,28 +161,31 @@ function generateRealData(tokens) {
     Array.from({length: d}, (_, j) => Math.round((((i * s1 + j * s2) % 10) / 5 - 1) * 10) / 10));
   
   const Wq = mkW(7, 3), Wk = mkW(5, 11), Wv = mkW(3, 7);
-  const matMul = (v, W) => W.map(r => Math.round(r.reduce((s, w, j) => s + w * v[j], 0) * 10) / 10);
+  const matMul = (v, W) => W[0].map((_, col) => Math.round(v.reduce((sum, value, row) => sum + value * W[row][col], 0) * 10) / 10);
   const Q = input.map(x => matMul(x.final, Wq));
   const K = input.map(x => matMul(x.final, Wk));
   const V = input.map(x => matMul(x.final, Wv));
   
-  // Attention 分数
-  const scores = Q.map((q, i) => 
+  // Attention 分数：Decoder-only 自回归模型需要屏蔽未来位置。
+  const scores = Q.map((q, i) =>
     K.map((k, j) => {
+      if (j > i) return Number.NEGATIVE_INFINITY;
       const dot = q.reduce((s, qv, idx) => s + qv * k[idx], 0);
       return Math.round((dot / Math.sqrt(d)) * 100) / 100;
     })
   );
-  
+
   const softmax = (row) => {
-    const max = Math.max(...row);
-    const exps = row.map(v => Math.exp(v - max));
+    const finiteValues = row.filter(Number.isFinite);
+    const max = Math.max(...finiteValues);
+    const exps = row.map((value) => Number.isFinite(value) ? Math.exp(value - max) : 0);
     const sum = exps.reduce((a, b) => a + b, 0);
-    return exps.map(e => Math.round((e / sum) * 100) / 100);
+    return exps.map((value) => Math.round((value / sum) * 100) / 100);
   };
   const attn = scores.map(softmax);
-  
-  return { input, Wq, Wk, Wv, Q, K, V, scores, attn };
+  const KT = Array.from({ length: d }, (_, row) => K.map((vector) => vector[row]));
+
+  return { input, Wq, Wk, Wv, Q, K, KT, V, scores, attn };
 }
 
 function usePlaybackSteps(length, ms, playing) {
@@ -225,7 +227,7 @@ function EmbeddingShot({ tokens, playing }) {
                   <div key={j} className="flex h-8 w-8 items-center justify-center rounded border border-violet-500/30 bg-violet-500/10 text-[10px] font-mono text-violet-300">{v.toFixed(1)}</div>
                 ))}
               </div>
-              <span className={`text-[10px] transition-all ${s2 ? 'text-violet-400' : 'text-space-700'}`}>位置编码</span>
+              <span className={`text-[10px] transition-all ${s2 ? 'text-violet-400' : 'text-space-700'}`}>示意位置信息</span>
               <span className={`text-sm font-bold transition-all ${s3 ? 'text-space-400' : 'text-space-800'}`}>=</span>
               <div className={`flex gap-1 transition-all duration-500 ${s3 ? 'opacity-100 scale-100' : 'opacity-30 scale-95'}`}>
                 {item.final.map((v, j) => (
@@ -237,6 +239,7 @@ function EmbeddingShot({ tokens, playing }) {
           );
         })}
       </div>
+      <p className="text-center text-[11px] leading-relaxed text-space-500">此处使用小型确定性向量展示数据流；真实模型可能使用 RoPE 等位置机制。</p>
       {step >= data.input.length * 3 && (
         <div className="text-sm font-semibold text-emerald-400">✓ 全部 Token 完成嵌入</div>
       )}
@@ -334,98 +337,102 @@ function AttentionShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
   const step = usePlaybackSteps(data.attn.length * data.attn.length + data.attn.length + 1, 230, playing);
   const n = data.attn.length;
-  
+  const finiteScores = data.scores.flat().filter(Number.isFinite);
+  const minScore = Math.min(...finiteScores);
+  const maxScore = Math.max(...finiteScores);
+
   const showScore = (i, j) => step >= i * n + j + 1;
   const showWeight = (i) => step >= n * n + i + 1;
   const allDone = step >= n * n + n;
-  
+  const scoreTone = (score) => {
+    if (!Number.isFinite(score)) return 'border-space-700 bg-space-950/70 text-space-600';
+    const ratio = maxScore === minScore ? 1 : (score - minScore) / (maxScore - minScore);
+    if (ratio >= 0.66) return 'border-violet-400/60 bg-violet-500/20 text-violet-200';
+    if (ratio >= 0.33) return 'border-cyan-500/45 bg-cyan-500/12 text-cyan-200';
+    return 'border-space-600/50 bg-space-800/60 text-space-400';
+  };
+  const weightTone = (weight) => {
+    if (weight >= 0.6) return 'border-emerald-400/60 bg-emerald-500/20 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.2)]';
+    if (weight >= 0.25) return 'border-cyan-400/50 bg-cyan-500/15 text-cyan-200';
+    if (weight > 0) return 'border-space-500/40 bg-space-800/60 text-space-300';
+    return 'border-space-700 bg-space-950/70 text-space-600';
+  };
+
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5">
-      <div className="flex items-center gap-4">
-        {/* Q 矩阵 */}
+      <div className="flex flex-wrap items-center justify-center gap-4">
         <div className="flex flex-col items-center gap-1">
           <span className="text-xs font-semibold text-cyan-300">Q</span>
           <div className="flex flex-col gap-0.5">
             {data.Q.map((row, i) => (
               <div key={i} className="flex gap-0.5">
-                {row.map((v, j) => (
-                  <div key={j} className="flex h-7 w-7 items-center justify-center rounded border border-cyan-500/30 bg-cyan-500/10 text-[9px] font-mono text-cyan-300">{v.toFixed(1)}</div>
-                ))}
+                {row.map((value, j) => <div key={j} className="flex h-7 w-7 items-center justify-center rounded border border-cyan-500/30 bg-cyan-500/10 text-[9px] font-mono text-cyan-300">{value.toFixed(1)}</div>)}
               </div>
             ))}
           </div>
         </div>
-        
-        <span className="text-space-500 text-lg">×</span>
-        
-        {/* K^T 矩阵 */}
+
+        <span className="text-lg text-space-500">×</span>
+
         <div className="flex flex-col items-center gap-1">
-          <span className="text-xs font-semibold text-emerald-300">K^T</span>
+          <span className="text-xs font-semibold text-emerald-300">Kᵀ</span>
           <div className="flex flex-col gap-0.5">
-            {data.K.map((row, i) => (
+            {data.KT.map((row, i) => (
               <div key={i} className="flex gap-0.5">
-                {row.map((v, j) => (
-                  <div key={j} className="flex h-7 w-7 items-center justify-center rounded border border-emerald-500/30 bg-emerald-500/10 text-[9px] font-mono text-emerald-300">{v.toFixed(1)}</div>
-                ))}
+                {row.map((value, j) => <div key={j} className="flex h-7 w-7 items-center justify-center rounded border border-emerald-500/30 bg-emerald-500/10 text-[9px] font-mono text-emerald-300">{value.toFixed(1)}</div>)}
               </div>
             ))}
           </div>
         </div>
-        
-        <span className="text-space-500 text-lg">=</span>
-        
-        {/* 注意力分数矩阵 */}
+
+        <span className="text-lg text-space-500">=</span>
+
         <div className="flex flex-col items-center gap-1">
-          <span className="text-xs font-semibold text-space-400">Score = Q·K^T/√4</span>
-          <div className="grid gap-1" style={{gridTemplateColumns:`repeat(${n}, 44px)`}}>
-            {data.scores.flat().map((s, idx) => {
+          <span className="text-xs font-semibold text-space-400">Score = mask(Q·Kᵀ/√4)</span>
+          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${n}, 44px)` }}>
+            {data.scores.flat().map((score, idx) => {
               const i = Math.floor(idx / n);
               const j = idx % n;
               const visible = showScore(i, j);
-              const self = i === j;
-              const near = Math.abs(i - j) === 1;
+              const masked = !Number.isFinite(score);
               return (
-                <motion.div key={idx} initial={{opacity:0.2, scale:0.85}} animate={visible ? {opacity:1, scale:1} : {}}
-                  className={`flex h-10 items-center justify-center rounded-lg border text-sm font-bold font-mono transition-all ${
-                    self ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.2)]' :
-                    near ? 'border-violet-400/50 bg-violet-500/18 text-violet-200' :
-                    'border-space-500/40 bg-space-800/70 text-space-500'} ${visible ? 'opacity-100 scale-100' : 'opacity-25 scale-90'}`}>
-                  {visible ? s.toFixed(2) : '?'}
-                  {self && visible && <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 rounded-full bg-emerald-400" />}
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0.2, scale: 0.85 }}
+                  animate={visible ? { opacity: 1, scale: 1 } : {}}
+                  className={`flex h-10 items-center justify-center rounded-lg border text-xs font-bold font-mono transition-all ${scoreTone(score)} ${visible ? 'opacity-100 scale-100' : 'opacity-25 scale-90'}`}
+                  title={masked ? '因果遮罩：当前位置不能读取未来 Token' : `Attention score: ${score.toFixed(2)}`}
+                >
+                  {visible ? (masked ? 'MASK' : score.toFixed(2)) : '?'}
                 </motion.div>
               );
             })}
           </div>
         </div>
       </div>
-      
-      {/* Softmax 结果 */}
+
       <div className={`flex flex-col items-center gap-1 transition-all duration-500 ${step >= n * n ? 'opacity-100' : 'opacity-30'}`}>
         <span className="text-xs font-semibold text-space-400">Softmax → Attention Weights</span>
-        <div className="grid gap-1" style={{gridTemplateColumns:`repeat(${n}, 44px)`}}>
-          {data.attn.flat().map((w, idx) => {
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${n}, 44px)` }}>
+          {data.attn.flat().map((weight, idx) => {
             const i = Math.floor(idx / n);
-            const j = idx % n;
             const visible = showWeight(i);
-            const self = i === j;
-            const strong = w > 0.5;
             return (
-              <div key={idx} className={`flex h-10 items-center justify-center rounded-lg border text-sm font-bold font-mono transition-all duration-500 ${
-                visible ? (strong ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.2)]' : 'border-space-500/40 bg-space-800/60 text-space-300')
-                : 'border-space-700 bg-space-800/30 text-space-700'}`}>
-                {visible ? w.toFixed(2) : '?'}
+              <div key={idx} className={`flex h-10 items-center justify-center rounded-lg border text-sm font-bold font-mono transition-all duration-500 ${visible ? weightTone(weight) : 'border-space-700 bg-space-800/30 text-space-700'}`}>
+                {visible ? weight.toFixed(2) : '?'}
               </div>
             );
           })}
         </div>
       </div>
-      
-      <div className="flex items-center gap-3 text-xs">
-        <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-emerald-300"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" />对角线 - 自身关注 (高)</span>
-        <span className="flex items-center gap-1.5 rounded-full border border-violet-500/25 bg-violet-500/10 px-3 py-1 text-violet-300"><span className="h-2.5 w-2.5 rounded-sm bg-violet-400" />邻近 - 上下文关联 (中)</span>
-        <span className="flex items-center gap-1.5 rounded-full border border-space-500/25 bg-space-800/60 px-3 py-1 text-space-400"><span className="h-2.5 w-2.5 rounded-sm bg-space-500" />远端 - 弱关注 (低)</span>
+
+      <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+        <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-emerald-300">权重 ≥ 0.60</span>
+        <span className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3 py-1 text-cyan-300">权重 0.25–0.59</span>
+        <span className="rounded-full border border-space-600 bg-space-800/60 px-3 py-1 text-space-400">低权重</span>
+        <span className="rounded-full border border-space-700 bg-space-950/70 px-3 py-1 text-space-500">MASK：禁止读取未来 Token</span>
       </div>
-      {allDone && <div className="text-sm font-semibold text-emerald-300">✓ Attention 权重计算完成，每行和 ≈1</div>}
+      {allDone && <div className="text-center text-sm font-semibold text-emerald-300">✓ 因果 Attention 权重计算完成，每行和 ≈ 1</div>}
     </div>
   );
 }
@@ -434,7 +441,7 @@ function AttentionShot({ tokens, playing }) {
 function ResidualFFNShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
   const n = data.input.length;
-  const steps = ['残差相加', 'LayerNorm', '升维 (4d)', 'GELU激活', '降维 (d)', '加残差'];
+  const steps = ['残差路径', '归一化', '前馈升维', '非线性/门控', '投影回 d', '残差合并'];
   const step = usePlaybackSteps(steps.length + 1, 700, playing);
   const showStep = (i) => step >= i + 1;
   const allDone = step >= steps.length;
@@ -483,12 +490,13 @@ function ResidualFFNShot({ tokens, playing }) {
         ))}
       </div>
       
+      <p className="max-w-3xl text-center text-[11px] leading-relaxed text-space-500">这是简化 Transformer 层示意；实际模型可能采用 RMSNorm、SwiGLU，以及不同的 Pre-Norm 或 Post-Norm 顺序。</p>
       <div className={`flex items-center gap-3 text-sm transition-all duration-500 ${allDone ? 'opacity-100' : 'opacity-30'}`}>
         <span className="rounded-md border border-space-700 bg-space-800/50 px-3 py-1.5">Attention 输出 + 原始输入</span>
         <span className="text-space-600">→</span>
         <span className="rounded-md border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-emerald-300 font-semibold">本层输出（进入下一层）</span>
       </div>
-      {allDone && <div className="text-sm font-semibold text-emerald-300">✓ 本层 K、V 已加入演示缓存；层输出继续传递到下一层</div>}
+      {allDone && <div className="text-sm font-semibold text-emerald-300">✓ 本层 K、V 已写入 KV Cache；层输出继续传递到下一层</div>}
     </div>
   );
 }
@@ -687,9 +695,9 @@ export default function Pipeline() {
     <div className="mx-auto max-w-7xl space-y-6">
       <ProductHeader
         title="推理流水线模拟器"
-        subtitle="使用项目知识库中的问题与定义，观察演示分词、Prefill、KV Cache 分支和逐步 Decode；标识符与矩阵仅用于过程追踪。"
+        subtitle="从文本分词开始，逐步观察 Prefill、KV Cache 分支与 Decode，理解一次大模型推理请求的完整执行过程。"
         accent="cyan"
-        badges={[{ label: '6 个知识库案例' }, { label: '可暂停与逐步推进' }]}
+        badges={[{ label: '6 个精选案例' }, { label: '可暂停与逐步推进' }]}
       />
       {/* Stage Bar */}
       <div className="panel-shell rounded-xl border border-space-700/50 bg-space-900/50 p-4 backdrop-blur-md">
@@ -729,14 +737,14 @@ export default function Pipeline() {
           <AnimatePresence mode="wait">
             {stage === 'idle' && (
               <motion.div key="idle" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-5">
-                <div><h3 className="text-sm font-semibold text-space-200 mb-1">选择问题</h3><p className="text-xs text-space-500">全部案例直接读取项目 knowledge.json 的定义字段，不生成事实性答案</p></div>
+                <div><h3 className="text-sm font-semibold text-space-200 mb-1">选择问题</h3><p className="text-xs text-space-500">选择一个技术问题，观察它从输入到生成答案的完整过程</p></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {CASES.map((c) => {
                     const isSelected = selectedCase?.id === c.id;
                     return (
                       <GlowCard key={c.id} accent={isSelected ? 'cyan' : 'slate'} interactive onClick={() => handleSelectCase(c)} className={`module-card p-3.5 ${isSelected ? 'ring-1 ring-cyan-400/40' : ''}`}>
                         <div className="flex items-center gap-2 mb-2"><BookOpen size={14} className={isSelected ? 'text-cyan-400' : 'text-space-500'} /><span className={`text-sm font-semibold ${isSelected ? 'text-cyan-300' : 'text-space-300'}`}>{c.label}</span></div>
-                        <p className="line-clamp-2 text-xs leading-relaxed text-space-500">{c.question}</p><p className="mt-2 truncate font-mono text-[9px] text-space-600">{c.sourceFile}</p>
+                        <p className="line-clamp-2 text-xs leading-relaxed text-space-500">{c.question}</p>
                       </GlowCard>
                     );
                   })}

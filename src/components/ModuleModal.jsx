@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowRight, GitCommit, Hash, Folder, Sparkles, Lightbulb } from 'lucide-react';
 import Badge from './Badge.jsx';
@@ -108,17 +108,53 @@ function ImpactBadge({ text }) {
   return <span className="rounded-md border border-space-700 bg-space-900/60 px-2.5 py-1 text-xs font-medium text-space-200">{text}</span>;
 }
 
-export default function ModuleModal({ module, accent = 'cyan', onClose }) {
+export default function ModuleModal({ module, accent = 'cyan', onClose, resolveRelated, onSelectRelated }) {
+  const titleId = useId();
+  const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const previousActiveRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const isOpen = Boolean(module);
+
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     if (!module) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    previousActiveRef.current = document.activeElement;
+    const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus());
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
+      cancelAnimationFrame(focusFrame);
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
+      previousActiveRef.current?.focus?.();
+      previousActiveRef.current = null;
     };
-  }, [module, onClose]);
+  }, [isOpen]);
 
   const color = accent === 'violet' ? 'text-violet-400' : accent === 'emerald' ? 'text-emerald-400' : 'text-cyan-400';
   const border = accent === 'violet' ? 'border-violet-500/30' : accent === 'emerald' ? 'border-emerald-500/30' : 'border-cyan-500/30';
@@ -133,9 +169,15 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
+            aria-hidden="true"
             className="absolute inset-0 bg-space-950/80 backdrop-blur-sm"
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
@@ -146,8 +188,11 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
             )}
           >
             <button
+              ref={closeButtonRef}
+              type="button"
               onClick={onClose}
-              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-space-700 bg-space-800 text-space-300 transition-colors hover:border-rose-500/50 hover:text-rose-400"
+              aria-label="关闭模块详情"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg border border-space-700 bg-space-800 text-space-300 transition-colors hover:border-rose-500/50 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
             >
               <X size={16} />
             </button>
@@ -162,7 +207,7 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
               <div className="mt-4 flex items-start gap-3">
                 <ModuleIcon id={module.id} className={cn(color, 'border-current/20')} />
                 <div>
-                  <h2 className={cn('text-2xl font-bold md:text-3xl', color)}>
+                  <h2 id={titleId} className={cn('text-2xl font-bold md:text-3xl', color)}>
                     {module.englishTitle || module.title}
                   </h2>
                   <div className="mt-0.5 text-sm text-space-400">{module.title}</div>
@@ -205,19 +250,26 @@ export default function ModuleModal({ module, accent = 'cyan', onClose }) {
                 {module.related && module.related.length > 0 && (
                   <DetailCard label="关联模块" icon={Folder} accent={accent}>
                     <div className="flex flex-wrap gap-2">
-                      {module.related.map((r, i) => (
-                        <span
-                          key={i}
-                          className={cn(
-                            'rounded-full border px-3 py-1 text-xs transition-colors',
-                            border,
-                            bg,
-                            color
-                          )}
-                        >
-                          {r}
-                        </span>
-                      ))}
+                      {module.related.map((relatedLabel, i) => {
+                        const relatedModule = resolveRelated?.(relatedLabel);
+                        const relatedClassName = cn(
+                          'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors',
+                          border,
+                          bg,
+                          color
+                        );
+                        return relatedModule ? (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => onSelectRelated?.(relatedModule)}
+                            className={cn(relatedClassName, 'hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/50')}
+                            aria-label={`打开关联模块：${relatedLabel}`}
+                          >
+                            {relatedLabel}<ArrowRight size={11} />
+                          </button>
+                        ) : <span key={i} className={relatedClassName}>{relatedLabel}</span>;
+                      })}
                     </div>
                   </DetailCard>
                 )}

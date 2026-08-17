@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   ScanSearch, Timer, Activity, MemoryStick, Gauge, ServerCog, ArrowRight,
-  ArrowUpRight, CheckCircle2, AlertTriangle, CircleGauge, Workflow, Database,
+  ArrowUpRight, CheckCircle2, AlertTriangle, CircleGauge, Copy, Workflow, Database,
   Network, ListChecks, Info, ChevronRight, RotateCcw, Search
 } from 'lucide-react';
 import Badge from '../components/Badge.jsx';
@@ -285,6 +285,7 @@ export default function Diagnosis() {
   const [selectedEvidence, setSelectedEvidence] = useState([]);
   const [selectedStage, setSelectedStage] = useState(null);
   const [causeId, setCauseId] = useState('ttft-queue');
+  const [copied, setCopied] = useState(false);
 
   const scenario = SCENARIOS.find(item => item.id === scenarioId) || SCENARIOS[0];
 
@@ -314,6 +315,35 @@ export default function Diagnosis() {
     setSelectedStage(nextStage);
     const first = rankedCauses.find(cause => !nextStage || cause.stage === nextStage);
     if (first) setCauseId(first.id);
+  };
+
+  const handleCopySummary = async () => {
+    const matched = selectedCause.matched
+      .map(signal => scenario.evidence.find(e => e.id === signal)?.label)
+      .filter(Boolean);
+    const lines = [
+      `场景：${scenario.title}（${scenario.metric}）`,
+      `候选原因：${selectedCause.title}`,
+      `已选证据：${matched.length ? matched.join('；') : '无直接匹配证据，需先执行验证步骤'}`,
+      `验证步骤：${selectedCause.verify.map((step, i) => `${i + 1}. ${step}`).join('；')}`,
+      `处理方向：${selectedCause.direction.join('；')}`,
+    ].join('\n');
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = lines;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (err) { /* 忽略 */ }
+      document.body.removeChild(ta);
+    };
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(lines);
+      else fallback();
+    } catch (err) { fallback(); }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
   };
 
   return (
@@ -415,8 +445,8 @@ export default function Diagnosis() {
             </div>
 
             <div className="flex flex-col gap-3 border-t border-space-700/50 bg-space-900/55 p-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-2"><Info size={15} className="mt-0.5 shrink-0 text-space-500" /><p className="text-xs leading-relaxed text-space-500">知识依据：<span className="text-space-300">{selectedKnowledge?.title}</span> — {selectedKnowledge?.summary}</p></div>
-              <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={() => navigate('/pipeline')} className="rounded-lg border border-space-700/60 bg-space-950/35 px-3 py-2 text-xs text-space-300 transition hover:border-violet-500/30 hover:text-violet-300">查看推理流水线</button>{selectedCause.labTab && <button type="button" onClick={() => navigate('/lab', { state: { tab: selectedCause.labTab } })} className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">进入参数实验室</button>}{selectedCause.compareTab && <button type="button" onClick={() => navigate('/compare', { state: { tab: selectedCause.compareTab } })} className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">进入方案对比台</button>}</div>
+              <div className="flex items-start gap-2"><Info size={15} className="mt-0.5 shrink-0 text-space-500" /><p className="text-xs leading-relaxed text-space-500">技术说明：<span className="text-space-300">{selectedKnowledge?.title}</span> — {selectedKnowledge?.summary}</p></div>
+              <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={handleCopySummary} className="inline-flex items-center gap-1.5 rounded-lg border border-space-700/60 bg-space-950/35 px-3 py-2 text-xs text-space-300 transition hover:border-cyan-500/30 hover:text-cyan-300">{copied ? <CheckCircle2 size={13} /> : <Copy size={13} />}{copied ? '已复制' : '复制诊断摘要'}</button><button type="button" onClick={() => navigate('/pipeline')} className="rounded-lg border border-space-700/60 bg-space-950/35 px-3 py-2 text-xs text-space-300 transition hover:border-violet-500/30 hover:text-violet-300">查看推理流水线</button>{selectedCause.labTab && <button type="button" onClick={() => navigate('/lab', { state: { tab: selectedCause.labTab } })} className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">进入参数实验室</button>}{selectedCause.compareTab && <button type="button" onClick={() => navigate('/compare', { state: { tab: selectedCause.compareTab } })} className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">进入方案对比台</button>}</div>
             </div>
           </section>
         </motion.div>

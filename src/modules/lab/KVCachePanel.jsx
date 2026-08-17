@@ -153,7 +153,6 @@ export default function KVCachePanel({ params, setParams, calcResult, modelWeigh
                   </div>
                   <div className="mt-2 font-mono text-[10px] text-space-400">KV {refCalc.kvCacheGB.toFixed(2)} GiB · 权重 {refWeight.toFixed(1)} GiB</div>
                   <p className="mt-2 text-[10px] leading-relaxed text-space-600">{cfg.scenarioNote}</p>
-                  <p className="mt-1 text-[9px] leading-relaxed text-space-700">来源：{cfg.source}</p>
                 </button>
               );
             })}
