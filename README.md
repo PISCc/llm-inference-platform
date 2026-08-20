@@ -27,6 +27,24 @@
 - 全局页面上下文可供 AI 助手和 PPT 导出复用。
 - 使用 `HashRouter` 与单文件构建，可直接打开 `dist/index.html` 浏览离线功能。
 
+## 界面演示
+
+以下截图来自当前版本的正式页面，展示平台的主要工作区与交互方向。页面中的动画、筛选、参数调整、证据选择和模块跳转需要在浏览器中运行项目后体验。
+
+<p align="center">
+  <img src="docs/images/home.png" alt="平台首页" width="49%" />
+  <img src="docs/images/panorama.png" alt="推理技术全景图" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/images/pipeline.png" alt="推理流水线模拟器" width="49%" />
+  <img src="docs/images/lab.png" alt="参数实验室工作台" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/images/diagnosis.png" alt="推理链路诊断台" width="82%" />
+</p>
+
 ## 技术栈
 
 - React 19
