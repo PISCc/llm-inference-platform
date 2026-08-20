@@ -1,5 +1,10 @@
-import PptxGenJS from 'pptxgenjs';
+import { createRequire } from 'node:module';
 import { validatePresentationSpec } from './presentationSpec.js';
+
+// Vercel currently packages Node functions through a CommonJS loader. Using
+// the package's documented `require` export avoids executing its ESM bundle as CJS.
+const require = createRequire(import.meta.url);
+const PptxGenJS = require('pptxgenjs');
 
 const PX_PER_INCH = 96;
 const FONT_FACE = 'Microsoft YaHei';
