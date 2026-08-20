@@ -49,6 +49,6 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`M6 API listening on http://${host}:${port}/api/agent/chat`);
+  console.log(`Agent API listening on http://${host}:${port}/api/agent/chat`);
   console.log('PPT Skill endpoints: /api/skills/ppt/outline, /api/skills/ppt/render');
 });

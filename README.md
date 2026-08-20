@@ -27,6 +27,24 @@
 - 全局页面上下文可供 AI 助手和 PPT 导出复用。
 - 使用 `HashRouter` 与单文件构建，可直接打开 `dist/index.html` 浏览离线功能。
 
+## 界面演示
+
+以下截图来自当前版本的正式页面，展示平台的主要工作区与交互方向。页面中的动画、筛选、参数调整、证据选择和模块跳转需要在浏览器中运行项目后体验。
+
+<p align="center">
+  <img src="docs/images/home.png" alt="平台首页" width="49%" />
+  <img src="docs/images/panorama.png" alt="推理技术全景图" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/images/pipeline.png" alt="推理流水线模拟器" width="49%" />
+  <img src="docs/images/lab.png" alt="参数实验室工作台" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/images/diagnosis.png" alt="推理链路诊断台" width="82%" />
+</p>
+
 ## 技术栈
 
 - React 19
@@ -36,6 +54,7 @@
 - Framer Motion
 - Recharts
 - Lucide React
+- PptxGenJS
 - Node.js HTTP API
 - OpenAI-compatible Chat Completions
 
@@ -109,6 +128,7 @@ LLM_MAX_TOKENS=1200
 LLM_TIMEOUT_MS=60000
 
 AGENT_ALLOWED_ORIGIN=
+MODEL_CONFIG_SECRET=
 AGENT_DEV_HOST=127.0.0.1
 AGENT_DEV_PORT=8787
 VITE_AGENT_API_URL=http://127.0.0.1:8787/api/agent/chat
@@ -119,6 +139,7 @@ VITE_AGENT_API_URL=http://127.0.0.1:8787/api/agent/chat
 - 不要把真实 API Key 写入 `VITE_*` 变量；`VITE_*` 会进入浏览器构建产物。
 - `.env` 已被 Git 忽略，`.env.example` 只保留无密钥示例。
 - 用户在模型配置窗口保存的配置按会话 Token 隔离，并优先于部署默认配置。
+- Serverless 部署应设置至少 32 个随机字符的 `MODEL_CONFIG_SECRET`；自定义模型配置会以 AES-256-GCM 加密令牌在函数之间传递，12 小时后失效。
 - 共享默认模型可通过 `AGENT_RATE_LIMIT_*` 变量配置请求和每日额度保护。
 
 ## 模型回答模式
@@ -142,15 +163,7 @@ PPT 流程包含：
   → 浏览器下载 PPTX
 ```
 
-本地环境会自动检测 Codex bundled runtime；也可以通过以下变量指定部署运行时：
-
-```env
-PPT_RUNTIME_NODE=
-PPT_RUNTIME_NODE_MODULES=
-PPT_RUNTIME_BIN_DIR=
-```
-
-当前 PPT 渲染流程依赖服务端运行时。仅部署静态 `dist` 时可以使用页面和离线问答，但不能完成 PPTX 服务端生成。
+PPTX 由服务端使用 PptxGenJS 在内存中生成，不依赖 Codex 本机运行时、Office 或 LibreOffice。Vercel Node.js Function 与本地 Node API 均可执行该流程。仅部署静态 `dist` 时仍无法调用服务端 PPTX 接口。
 
 ## 构建与离线运行
 
@@ -226,13 +239,16 @@ llm-inference-platform/
 - 本地 Node API
 - 单文件静态构建
 - `file://` 离线打开
+- Vercel 静态前端与 Node.js Functions
+- 云端 PPTX 内存渲染
 
-如果需要公开部署并保留在线模型与 PPTX，需要另外准备生产服务器、公开 API 安全策略、模型服务白名单、限流和云端 PPT 运行时。建议先生成独立部署版本并完成本地生产验收，再连接托管平台。
+推荐在 Vercel 导入本仓库，使用 `npm run build` 和 `dist` 输出目录。在线模型密钥只填写到 Vercel 服务端环境变量；不要创建任何包含密钥的 `VITE_*` 变量。部署环境不设置 `VITE_AGENT_API_URL` 时，前端会自动调用同域 `/api`。
 
 ## 安全说明
 
 - 不提交 `.env`、API Key、访问令牌或本机运行时路径。
 - 公开部署前必须限制 CORS 和模型服务目标地址。
+- 公开环境默认拒绝 HTTP、localhost、私有网段、链路本地地址和云元数据地址。
 - 公共默认模型需要单 IP 和共享总额度限制。
 - 多实例部署时，内存限流需要迁移到共享 KV、Redis 或同类存储。
 - 公开的自定义 API 配置必须防止 SSRF、私有网络访问和云元数据访问。

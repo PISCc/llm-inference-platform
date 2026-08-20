@@ -41,7 +41,7 @@ export async function handleAgentConfigRequest(request, env = process.env) {
   const token = getConfigToken(request);
 
   if (request.method === 'GET') {
-    const config = getStoredModelConfig(token);
+    const config = getStoredModelConfig(token, env);
     return jsonResponse({ config: config ? publicModelConfig(config, { source: 'session' }) : envModelConfigStatus(env) }, 200, request, env);
   }
 
@@ -56,7 +56,7 @@ export async function handleAgentConfigRequest(request, env = process.env) {
 
   try {
     const input = await readJson(request);
-    const result = upsertModelConfig(input, token);
+    const result = upsertModelConfig(input, token, env);
     return jsonResponse({ token: result.token, config: publicModelConfig(result.config, { source: 'session' }) }, 200, request, env);
   } catch (error) {
     return jsonResponse({ error: { code: error.code || 'MODEL_CONFIG_FAILED', message: error.message || '模型配置失败。' } }, Number(error.status) || 400, request, env);
@@ -73,10 +73,10 @@ export async function handleAgentConfigTestRequest(request, env = process.env) {
   try {
     const input = await readJson(request);
     const token = getConfigToken(request);
-    const stored = getStoredModelConfig(token);
+    const stored = getStoredModelConfig(token, env);
     const hasInput = Object.keys(input || {}).length > 0;
     const environment = resolveModelConfig(env);
-    const config = stored || (hasInput ? normalizeModelConfig(input) : environment.configured ? environment : null);
+    const config = stored || (hasInput ? normalizeModelConfig(input, { env }) : environment.configured ? environment : null);
     if (!config) return jsonResponse({ error: { code: 'MODEL_NOT_CONFIGURED', message: '请先填写并保存模型配置。' } }, 400, request, env);
     const source = stored ? 'session' : hasInput ? 'test' : 'environment';
     const adapter = createModelAdapter({ env, config });

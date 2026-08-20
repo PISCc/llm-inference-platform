@@ -227,7 +227,7 @@ export async function createPresentationSpec(input, { env = process.env, modelCo
         '你负责为大模型推理技术说明生成 PresentationSpec JSON。',
         '只输出 JSON，不要 Markdown。',
         '保持当前页面数据与边界，不得编造性能、硬件、版本、精度或 benchmark。',
-        'M3/M4 的容量结果不是实测性能；M5 原因只能表述为候选原因。',
+        '参数实验与方案对比中的容量结果不是实测性能；链路诊断中的原因只能表述为候选原因。',
         '每页一个主张，标题简洁，最多 5 条要点，每页 sources 至少一项。',
         '必须严格保留 version、meta、slides 结构与页数。',
       ].join('\n'),

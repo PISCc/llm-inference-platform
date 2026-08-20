@@ -1,6 +1,6 @@
 ---
 name: knowledge-to-ppt
-description: Convert an LLM answer, the current LLM inference platform page state, an M4 comparison, or an M5 diagnosis into an editable PowerPoint deck. Use when the user asks to generate, export, download, outline, or revise a PPT/PPTX from platform knowledge, an assistant response, comparison results, or diagnosis evidence.
+description: Convert an LLM answer, the current LLM inference platform page state, a technical comparison, or a link diagnosis into an editable PowerPoint deck. Use when the user asks to generate, export, download, outline, or revise a PPT/PPTX from platform knowledge, an assistant response, comparison results, or diagnosis evidence.
 ---
 
 # Knowledge to PPT
@@ -9,7 +9,7 @@ Create an editable, source-aware technical deck from structured platform context
 
 ## Workflow
 
-1. Collect exactly one source scope: current answer, current page, M4 comparison, or M5 diagnosis.
+1. Collect exactly one source scope: current answer, current page, technical comparison, or link diagnosis.
 2. Collect audience, duration, slide count, and theme. Default to technical colleagues, 10 minutes, 6 slides, and the platform light theme.
 3. Produce a `PresentationSpec` that passes `schema.json`. Prefer the configured model for narrative structure; fall back to deterministic extraction when unavailable.
 4. Show the outline before rendering. Allow slide titles, takeaways, and bullets to be edited.
@@ -19,12 +19,11 @@ Create an editable, source-aware technical deck from structured platform context
 
 ## Content Rules
 
-- Preserve the source's uncertainty and boundaries. Never turn M5 candidates into confirmed root causes.
-- Treat M3/M4 capacity calculations as formula results, not measured performance.
+- Preserve the source's uncertainty and boundaries. Never turn diagnosis candidates into confirmed root causes.
+- Treat parameter-lab and comparison capacity calculations as formula results, not measured performance.
 - Never invent latency, throughput, accuracy, hardware, version, or benchmark figures.
 - Write audience-facing slide copy. Do not expose prompts, planning notes, generation modes, or implementation scaffolding.
 - Add a `[Sources]` block to every slide's speaker notes.
 - Use concise claims and no more than five bullets per slide.
 
 Read `references/slide-rules.md` before changing layouts or copy limits. Use `schema.json` as the only accepted interchange contract. Do not manually edit the exported PPTX when a spec change can be rendered deterministically.
-
