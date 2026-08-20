@@ -47,3 +47,6 @@ docs/网页改版执行总结-*.md
 
 # Tunnel binary kept outside version control
 tools/
+
+# Vercel local project metadata
+.vercel/
