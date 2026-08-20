@@ -15,6 +15,9 @@ jobs:
     env:
       BASE_URL: https://llm-inference-platform-pisc2.vercel.app
     steps:
+      - name: Wait for the production alias to update
+        run: sleep 30
+
       - name: Frontend responds
         run: |
           node <<'NODE'
