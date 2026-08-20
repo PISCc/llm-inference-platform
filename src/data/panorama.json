@@ -1,0 +1,1910 @@
+{
+  "meta": {
+    "source": "基于真实大模型推理知识重新整理",
+    "moduleCount": 60,
+    "groups": {
+      "arch": 7,
+      "memory": 5,
+      "exec": 5,
+      "gen": 3,
+      "eval": 4,
+      "modelbase": 4,
+      "attention": 3,
+      "moe": 8,
+      "attarch": 2,
+      "compress": 6,
+      "gpu": 4,
+      "interconnect": 2,
+      "parallel": 5,
+      "hardware": 2
+    },
+    "groupLabels": {
+      "arch": "架构与调度",
+      "memory": "内存与注意力",
+      "exec": "执行与计算",
+      "gen": "生成加速",
+      "eval": "评测与工程化",
+      "modelbase": "模型基础",
+      "attention": "Attention 机制",
+      "moe": "MoE 结构与路由",
+      "attarch": "Attention 架构",
+      "compress": "压缩与适配",
+      "gpu": "GPU 关键维度",
+      "interconnect": "互联与拓扑",
+      "parallel": "多卡并行与通信",
+      "hardware": "机型与选型"
+    },
+    "updatedAt": "2026-08-12T07:03:14.820Z"
+  },
+  "modules": [
+    {
+      "id": "vllm",
+      "title": "分布式推理引擎",
+      "category": "arch",
+      "categoryLabel": "架构与调度",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "高性能大模型服务框架，集成调度、显存与执行",
+      "definition": "vLLM、SGLang、LMDeploy 等推理引擎，负责将模型权重加载到 GPU，接收用户请求，调度批处理，管理 KV Cache，并返回生成结果。",
+      "problem": "单卡显存有限，多请求并发时需要高效调度显存与计算资源，避免请求饥饿和显存碎片。",
+      "steps": [
+        "加载模型权重到 GPU",
+        "接收并解析推理请求",
+        "调度器组织批处理",
+        "执行 Prefill/Decode",
+        "返回增量 Token 流"
+      ],
+      "impact": [
+        "吞吐 ↑",
+        "延迟 ↓",
+        "显存利用率 ↑"
+      ],
+      "related": [
+        "Scheduler",
+        "KV Cache",
+        "PagedAttention"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Distributed Inference Engine",
+      "plainExplanation": "负责把大模型加载到 GPU 上运行，同时处理多个用户的请求并返回生成结果的服务框架。"
+    },
+    {
+      "id": "api",
+      "title": "推理服务接口",
+      "category": "arch",
+      "categoryLabel": "架构与调度",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "标准化请求入口，支持流式与批量推理",
+      "definition": "OpenAI-compatible API、gRPC 或 REST 接口，负责接收文本输入、参数解析、Token 化，并返回生成结果或流式增量输出。",
+      "problem": "不同客户端需要统一、低延迟的访问方式，且需支持流式输出以降低首字等待时间。",
+      "steps": [
+        "接收 HTTP/gRPC 请求",
+        "参数校验与限流",
+        "Tokenizer 文本编码",
+        "送入推理队列",
+        "流式返回 Token"
+      ],
+      "impact": [
+        "易用性 ↑",
+        "首字延迟 ↓",
+        "兼容性 ↑"
+      ],
+      "related": [
+        "Tokenizer",
+        "Scheduler",
+        "流式输出"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "API & Input Processing",
+      "aliases": ["输入处理"],
+      "plainExplanation": "接收用户输入的接口，把文字转成模型能理解的格式，再把模型输出转回文字返回给用户。"
+    },
+    {
+      "id": "scheduler",
+      "title": "请求调度策略",
+      "category": "arch",
+      "categoryLabel": "架构与调度",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "决定请求执行顺序与批处理组织方式",
+      "definition": "推理调度器根据 FCFS（先来先服务）、优先级、Continuous Batching 等策略，决定哪些请求进入 GPU 执行，哪些排队等待。",
+      "problem": "多请求竞争 GPU 计算单元和显存，需要平衡公平性、延迟与吞吐量。",
+      "steps": [
+        "请求进入队列",
+        "按策略排序",
+        "组织可批处理请求",
+        "下发 GPU 执行",
+        "回收完成请求"
+      ],
+      "impact": [
+        "吞吐量 ↑",
+        "P99 延迟 ↓",
+        "GPU 利用率 ↑"
+      ],
+      "related": [
+        "Continuous Batching",
+        "Chunked Prefill",
+        "PD 分离"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Request Scheduler",
+      "aliases": ["调度器"],
+      "plainExplanation": "决定多个请求谁先处理、谁排队、怎么合并到一批同时计算的调度系统。"
+    },
+    {
+      "id": "cb",
+      "title": "动态连续批处理",
+      "category": "arch",
+      "categoryLabel": "架构与调度",
+      "day": 1,
+      "dayLabel": "第 1 天",
+      "summary": "请求完成后动态补入新请求，减少整批等待",
+      "definition": "Continuous Batching（In-flight Batching）允许在一个批处理中，某些请求完成生成后立即被新请求替换，无需等待整个批次结束。",
+      "problem": "静态批处理通常要等待整批完成，容易造成部分执行槽位空闲和缓存资源滞留。",
+      "steps": [
+        "启动一批请求",
+        "监控各请求状态",
+        "完成请求立即踢出",
+        "新请求动态补入",
+        "持续循环"
+      ],
+      "impact": [
+        "GPU 利用率 ↑",
+        "吞吐 ↑",
+        "平均延迟 ↓"
+      ],
+      "related": [
+        "Scheduler",
+        "Batching",
+        "Chunked Prefill"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Continuous Batching",
+      "aliases": ["Batching", "批处理"],
+      "plainExplanation": "当批处理中的部分请求完成后，调度器可以补入新请求，减少等待整批结束造成的资源空档；实际利用率仍取决于负载与实现。"
+    },
+    {
+      "id": "chunked",
+      "title": "预填充分块流水线",
+      "category": "arch",
+      "categoryLabel": "架构与调度",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "长输入分块处理，与 Decode 交替执行",
+      "definition": "Chunked Prefill 将长输入序列切分为多个小块，逐块执行 Prefill，小块之间穿插 Decode 阶段，降低长输入请求的阻塞。",
+      "problem": "长输入 Prefill 占用大量 GPU 时间，阻塞短请求的 Decode，导致整体延迟上升。",
+      "steps": [
+        "长输入切分为块",
+        "执行第一块 Prefill",
+        "穿插短请求 Decode",
+        "继续下一块 Prefill",
+        "循环直至完成"
+      ],
+      "impact": [
+        "长输入延迟 ↓",
+        "短请求阻塞 ↓",
+        "吞吐 ↑"
+      ],
+      "related": [
+        "Prefill",
+        "Decode",
+        "Scheduler"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Chunked Prefill",
+      "plainExplanation": "把很长的输入切成小块，一块一块地处理，中间穿插处理其他请求，避免长请求阻塞所有人。"
+    },
+    {
+      "id": "admission",
+      "title": "请求准入与资源管理",
+      "category": "arch",
+      "categoryLabel": "架构与调度",
+      "day": 1,
+      "dayLabel": "第 1 / 6 天",
+      "summary": "过载保护、优先级抢占与负载均衡",
+      "definition": "请求准入控制器根据当前 GPU 负载、显存余量和请求优先级，决定接受、排队、抢占或拒绝请求，用于降低过载与资源耗尽风险。",
+      "problem": "突发高并发可能导致显存溢出（OOM）或服务雪崩，需要主动限流和优先级保障。",
+      "steps": [
+        "评估显存余量",
+        "检查请求优先级",
+        "准入或拒绝请求",
+        "低优先级请求可抢占",
+        "动态负载均衡"
+      ],
+      "impact": [
+        "稳定性 ↑",
+        "OOM 风险 ↓",
+        "关键请求保障 ↑"
+      ],
+      "related": [
+        "Scheduler",
+        "Memory Manager",
+        "KV Cache"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Admission Control",
+      "plainExplanation": "根据 GPU 当前负载判断接不接受新请求，防止系统过载崩溃，优先保障高优先级请求。"
+    },
+    {
+      "id": "pd",
+      "title": "预填充-解码分离部署",
+      "category": "arch",
+      "categoryLabel": "架构与调度",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "Prefill 与 Decode 分集群执行，各自优化",
+      "definition": "PD 分离将计算密集的 Prefill 阶段和访存密集的 Decode 阶段部署在不同 GPU 集群上，各自独立扩缩容。",
+      "problem": "Prefill 需要高算力（矩阵乘法），Decode 需要高显存带宽（KV Cache 读取），混合部署导致资源错配。",
+      "steps": [
+        "Prefill 集群处理输入",
+        "KV Cache 传输到 Decode 集群",
+        "Decode 集群逐 Token 生成",
+        "各自独立扩缩容"
+      ],
+      "impact": [
+        "资源利用率 ↑",
+        "TTFT ↓",
+        "TPOT ↓"
+      ],
+      "related": [
+        "Prefill",
+        "Decode",
+        "KV Cache"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "PD Disaggregation",
+      "aliases": ["PD 分离"],
+      "plainExplanation": "把计算密集的\"读题\"阶段和访存密集的\"答题\"阶段分别放到不同 GPU 集群上各自优化。"
+    },
+    {
+      "id": "kv",
+      "title": "键值缓存机制",
+      "category": "memory",
+      "categoryLabel": "内存与注意力",
+      "day": 5,
+      "dayLabel": "第 5 天",
+      "summary": "保存历史注意力状态，避免重复计算",
+      "definition": "KV Cache 存储每个 Token 的 Key 和 Value 向量，在自回归生成时复用历史状态，避免每步重新计算完整注意力矩阵。",
+      "problem": "没有 KV Cache 时，生成每个新 Token 都要重新计算所有历史 Token 的 K、V，计算量随序列长度平方增长。",
+      "steps": [
+        "Prefill 阶段计算初始 KV",
+        "保存到显存缓存",
+        "Decode 时读取历史 KV",
+        "拼接新 KV 并计算",
+        "更新缓存"
+      ],
+      "impact": [
+        "计算量 ↓",
+        "显存占用 ↑",
+        "生成速度 ↑"
+      ],
+      "related": [
+        "PagedAttention",
+        "Prefix Cache",
+        "MLA"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "KV Cache",
+      "plainExplanation": "保存每个 Token 的历史注意力状态，让模型生成新词时不用重复计算之前所有的词。"
+    },
+    {
+      "id": "paged",
+      "title": "分页式注意力缓存",
+      "category": "memory",
+      "categoryLabel": "内存与注意力",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "KV Cache 按逻辑块管理，减少连续分配压力",
+      "definition": "PagedAttention 将 KV Cache 划分为固定大小的逻辑块，通过块表把逻辑块映射到物理块；块大小和回收策略由具体实现配置决定。",
+      "problem": "不同请求序列长度差异大，连续分配 KV Cache 产生大量内部碎片，显存利用率低。",
+      "steps": [
+        "KV Cache 划分为逻辑块",
+        "按需分配物理块",
+        "块表维护逻辑到物理映射",
+        "物理块按生命周期回收或共享",
+        "需要时执行 Copy-on-Write"
+      ],
+      "impact": [
+        "降低连续显存分配压力",
+        "提高空间管理灵活性",
+        "支持更高并发的可能性"
+      ],
+      "related": [
+        "KV Cache",
+        "Memory Manager",
+        "Prefix Cache"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "PagedAttention",
+      "aliases": ["Block Table"],
+      "plainExplanation": "把 KV Cache 切成可独立管理的块，按需分配和回收物理显存。"
+    },
+    {
+      "id": "mm",
+      "title": "显存分配管理器",
+      "category": "memory",
+      "categoryLabel": "内存与注意力",
+      "day": 5,
+      "dayLabel": "第 5 天",
+      "summary": "管理 KV Cache 的创建、增长与回收生命周期",
+      "definition": "显存管理器跟踪每个请求的 KV Cache 块分配情况，处理块的分配、扩容、复制、共享和释放，防止显存泄漏。",
+      "problem": "多请求并发时，KV Cache 动态增长和释放需要精细管理，否则导致显存碎片或 OOM。",
+      "steps": [
+        "请求到达分配初始块",
+        "序列增长时追加块",
+        "共享前缀块（Copy-on-Write）",
+        "请求结束回收块",
+        "空闲块复用"
+      ],
+      "impact": [
+        "显存效率 ↑",
+        "OOM 风险 ↓",
+        "并发能力 ↑"
+      ],
+      "related": [
+        "KV Cache",
+        "PagedAttention",
+        "Block Table"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Memory Manager",
+      "plainExplanation": "跟踪每个请求的 KV Cache 块，负责分配、扩容、共享和释放，防止显存泄漏。"
+    },
+    {
+      "id": "prefix",
+      "title": "前缀缓存复用",
+      "category": "memory",
+      "categoryLabel": "内存与注意力",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "命中相同前缀时复用 KV Cache，跳过重复计算",
+      "definition": "Prefix Cache 识别输入序列的公共前缀，复用已计算的 KV Cache 块，仅对新后缀部分执行 Prefill。",
+      "problem": "多轮对话或批量请求中，系统提示词和前文大量重复，每次都重新计算浪费算力。",
+      "steps": [
+        "计算输入前缀哈希",
+        "查找缓存命中",
+        "命中则复用 KV 块",
+        "未命中则计算并缓存",
+        "更新块引用计数"
+      ],
+      "impact": [
+        "Prefill 时间 ↓",
+        "首字延迟 ↓",
+        "能耗 ↓"
+      ],
+      "related": [
+        "KV Cache",
+        "PagedAttention"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Prefix Cache",
+      "plainExplanation": "当多个请求开头相同时，直接复用已算好的 KV Cache，只计算不同的后缀部分。"
+    },
+    {
+      "id": "offload",
+      "title": "KV 缓存分层卸载",
+      "category": "memory",
+      "categoryLabel": "内存与注意力",
+      "day": 6,
+      "dayLabel": "第 6 天",
+      "summary": "冷缓存迁移至 CPU/SSD，热缓存保留 GPU",
+      "definition": "Hybrid KV Offload 将不活跃的 KV Cache 块从 GPU HBM 迁移到 CPU DRAM 或 SSD，需要时再加载回 GPU，扩大有效上下文长度。",
+      "problem": "超长上下文导致 KV Cache 超出 GPU 显存上限，限制可处理序列长度。",
+      "steps": [
+        "识别冷缓存块",
+        "压缩并迁移到 CPU",
+        "需要时异步加载回 GPU",
+        "热缓存保留 HBM",
+        "按需换入换出"
+      ],
+      "impact": [
+        "有效上下文 ↑",
+        "显存压力 ↓",
+        "换入延迟增加"
+      ],
+      "related": [
+        "KV Cache",
+        "Memory Manager"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "KV Offload",
+      "plainExplanation": "把不常用的 KV Cache 从 GPU 搬到 CPU 或 SSD，需要时再加载回来，突破显存上限。"
+    },
+    {
+      "id": "prefill_decode",
+      "title": "两阶段推理模式",
+      "category": "exec",
+      "categoryLabel": "执行与计算",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "Prefill 处理输入，Decode 自回归生成",
+      "definition": "Prefill 阶段通常并行处理输入序列并建立 KV Cache；标准自回归 Decode 对每个请求每步生成一个新 Token，并复用历史缓存。批处理与投机解码等实现可在一次迭代中处理多个请求或候选 Token。",
+      "problem": "Prefill 计算密集但只需一次，Decode 访存密集但需执行多次，两阶段特性差异大。",
+      "steps": [
+        "Prefill: 并行编码输入",
+        "保存全部 KV Cache",
+        "Decode: 逐个生成 Token",
+        "读取历史 KV",
+        "循环直至 EOS"
+      ],
+      "impact": [
+        "首字延迟 = Prefill 时间",
+        "生成延迟 = Decode 每步时间",
+        "两者优化方向不同"
+      ],
+      "related": [
+        "KV Cache",
+        "PD 分离",
+        "Chunked Prefill"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Prefill & Decode",
+      "aliases": ["Prefill", "Decode"],
+      "plainExplanation": "先一次性处理完输入文本，然后逐词生成输出，前者计算密集，后者访存密集。"
+    },
+    {
+      "id": "kernel",
+      "title": "GPU 算子融合与定制",
+      "category": "exec",
+      "categoryLabel": "执行与计算",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "合并多个小算子，减少核函数启动开销",
+      "definition": "Kernel Fusion 将 LayerNorm、激活函数、残差连接等操作合并为单个 CUDA Kernel，减少显存读写和启动开销；定制 GEMM 核适配特定形状。",
+      "problem": "PyTorch 默认实现启动大量小 Kernel，显存带宽成为瓶颈，GPU 计算单元利用率低。",
+      "steps": [
+        "分析算子执行图",
+        "识别可融合算子链",
+        "编写融合 CUDA Kernel",
+        "优化共享内存与寄存器",
+        "验证数值正确性"
+      ],
+      "impact": [
+        "Kernel 数 ↓",
+        "显存带宽 ↓",
+        "延迟 ↓"
+      ],
+      "related": [
+        "CUDA Graph",
+        "GEMM",
+        "FlashAttention"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Kernel Fusion",
+      "aliases": ["Kernel 优化"],
+      "plainExplanation": "把多个小计算操作合并成一个大操作，减少 GPU 核函数的启动次数和显存读写。"
+    },
+    {
+      "id": "cudagraph",
+      "title": "CUDA 计算图加速",
+      "category": "exec",
+      "categoryLabel": "执行与计算",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "预捕获 Kernel 序列，减少重复提交开销",
+      "definition": "CUDA Graph 预先记录可重放的 Kernel 执行序列，后续通过较少的提交操作重放计算图，减少重复的 CPU 调度与 Kernel 启动开销；收益取决于图稳定性和工作负载。",
+      "problem": "小 Batch 推理时，Kernel 启动时间占总延迟比例高，GPU 计算单元等待时间长。",
+      "steps": [
+        "Warmup 执行捕获图",
+        "记录 Kernel 依赖关系",
+        "冻结图结构",
+        "后续请求重放图",
+        "动态参数更新"
+      ],
+      "impact": [
+        "小 Batch 延迟 ↓",
+        "CPU 开销 ↓",
+        "吞吐量 ↑"
+      ],
+      "related": [
+        "Kernel 优化",
+        "GEMM",
+        "FlashAttention"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "CUDA Graph",
+      "plainExplanation": "预先记录一遍完整的 GPU 计算流程，之后直接重放，省去每次调度的 CPU 开销。"
+    },
+    {
+      "id": "flash",
+      "title": "IO 感知注意力计算",
+      "category": "exec",
+      "categoryLabel": "执行与计算",
+      "day": 7,
+      "dayLabel": "第 7 天",
+      "summary": "分块计算注意力，避免显存读写瓶颈",
+      "definition": "FlashAttention 使用分块与在线 Softmax 减少 HBM 和片上 SRAM 之间的读写，并避免物化完整注意力矩阵。它降低 IO 与中间存储需求，但是否由带宽瓶颈转为计算瓶颈取决于形状、硬件和实现。",
+      "problem": "标准 Attention 需要存储 N×N 注意力矩阵，显存占用随序列长度平方增长，HBM 带宽成为瓶颈。",
+      "steps": [
+        "输入分块加载到 SRAM",
+        "分块计算 S=Q×K^T",
+        "在线 Softmax 归一化",
+        "累加 O=Softmax×V",
+        "输出写回 HBM"
+      ],
+      "impact": [
+        "显存占用 ↓",
+        "序列长度 ↑",
+        "渐近计算复杂度不变"
+      ],
+      "related": [
+        "Attention 机制",
+        "Kernel 优化",
+        "GEMM"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "FlashAttention",
+      "plainExplanation": "分块计算注意力矩阵，只保留正在计算的部分在快速显存中，不存完整矩阵。"
+    },
+    {
+      "id": "gemm",
+      "title": "通用矩阵乘法",
+      "category": "exec",
+      "categoryLabel": "执行与计算",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "Transformer 中最核心的计算原语",
+      "definition": "GEMM（General Matrix Multiply）是 QKV 投影、FFN、输出投影的基础运算，通过 cuBLAS、CUTLASS 或定制 Kernel 在 Tensor Core 上加速。",
+      "problem": "GEMM 是 Transformer 前向传播中的主要计算形式之一，实际占比随模型结构、序列阶段、算子融合和硬件实现变化。",
+      "steps": [
+        "矩阵分块（Tile）",
+        "加载到共享内存",
+        "Warp 级 MMA 计算",
+        "累加结果",
+        "写回全局内存"
+      ],
+      "impact": [
+        "计算吞吐 ↑",
+        "利用率 ↑",
+        "精度需关注"
+      ],
+      "related": [
+        "Kernel 优化",
+        "CUDA Graph",
+        "GPU 算力"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "GEMM",
+      "plainExplanation": "矩阵乘法是 QKV 投影、前馈网络和输出投影等模块的基础计算操作。"
+    },
+    {
+      "id": "spec",
+      "title": "投机解码",
+      "category": "gen",
+      "categoryLabel": "生成加速",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "小模型快速猜测，大模型验证修正",
+      "definition": "Speculative Decoding 使用 Draft Model 生成候选 Token 序列，再由 Target Model 并行评分并按接受规则保留候选前缀。正确实现可保持目标模型的采样分布，但加速收益取决于接受率与额外开销。",
+      "problem": "标准自回归 Decode 串行生成 Token；推测解码尝试用较低成本候选减少目标模型的串行步数。",
+      "steps": [
+        "Draft 模型生成候选序列",
+        "Target 模型并行验证",
+        "按接受规则保留候选前缀",
+        "在首个拒绝处从目标分布采样",
+        "更新 KV Cache"
+      ],
+      "impact": [
+        "有效步长 ↑",
+        "潜在 TPOT 降低",
+        "正确实现保持目标分布"
+      ],
+      "related": [
+        "MTP",
+        "Decode",
+        "KV Cache"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Speculative Decoding",
+      "plainExplanation": "用小模型快速猜测接下来几个词，大模型并行验证，猜对就跳过，猜错再重写。"
+    },
+    {
+      "id": "mtp",
+      "title": "多 Token 并行预测",
+      "category": "gen",
+      "categoryLabel": "生成加速",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "单次前向预测多个未来 Token",
+      "definition": "Multi-Token Prediction（MTP）增加未来位置的辅助预测目标或模块；在支持的推理方案中，这些预测可作为推测候选并由主模型验证。具体头数与推理用法取决于模型实现。",
+      "problem": "标准自回归生成存在串行依赖；MTP 提供多个未来位置的训练信号，并可为推测解码提供候选。",
+      "steps": [
+        "主头预测当前 Token",
+        "辅助头预测未来 Token",
+        "并行验证多个位置",
+        "接受正确预测",
+        "回退错误位置"
+      ],
+      "impact": [
+        "每步产出 ↑",
+        "增加辅助训练目标",
+        "实现开销需评估"
+      ],
+      "related": [
+        "Speculative Decoding",
+        "Decode"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Multi-Token Prediction",
+      "plainExplanation": "同时预测多个未来位置，可用于增强训练信号或生成候选；最终输出通常仍需验证。"
+    },
+    {
+      "id": "stream",
+      "title": "增量式流式返回",
+      "category": "gen",
+      "categoryLabel": "生成加速",
+      "day": 4,
+      "dayLabel": "第 4 天",
+      "summary": "生成部分 Token 立即返回，降低感知延迟",
+      "definition": "流式输出（Streaming）在生成过程中分批向客户端推送增量内容，使用户无需等待完整序列结束即可看到结果；它改善感知等待，但不改变模型本身的首 Token 计算时间。",
+      "problem": "非流式需等全部生成完毕才返回，长序列等待时间可达数十秒，用户体验差。",
+      "steps": [
+        "生成第一个 Token",
+        "立即推送给客户端",
+        "继续生成下一个",
+        "循环推送",
+        "EOS 时结束"
+      ],
+      "impact": [
+        "感知延迟 ↓",
+        "用户体验 ↑",
+        "网络开销略增"
+      ],
+      "related": [
+        "API",
+        "Decode"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Streaming Output",
+      "aliases": ["流式输出"],
+      "plainExplanation": "每生成一个词就立即返回给用户，而不是等整段文字全部生成完毕再一起返回。"
+    },
+    {
+      "id": "bench",
+      "title": "推理性能基准测试",
+      "category": "eval",
+      "categoryLabel": "评测与工程化",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "标准化实验衡量吞吐量、延迟与成本",
+      "definition": "Benchmark 使用固定数据集和负载模式，测量系统在不同并发、输入长度下的 TTFT、TPOT、Throughput、Goodput 等指标。",
+      "problem": "不同评测工具和负载模式导致结果不可比，需要标准化测试方法。",
+      "steps": [
+        "定义测试数据集",
+        "控制并发与输入长度",
+        "收集延迟与吞吐数据",
+        "计算 P50/P95/P99",
+        "对比不同方案"
+      ],
+      "impact": [
+        "可复现性 ↑",
+        "选型依据 ↑",
+        "优化方向明确"
+      ],
+      "related": [
+        "性能指标",
+        "可观测性",
+        "硬件选型"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Benchmark",
+      "plainExplanation": "用标准化的测试数据和负载模式，测量系统在不同条件下的吞吐量和延迟。"
+    },
+    {
+      "id": "obs",
+      "title": "推理系统可观测性",
+      "category": "eval",
+      "categoryLabel": "评测与工程化",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "队列、显存与阶段指标监控",
+      "definition": "可观测性体系收集推理服务的请求队列长度、GPU 利用率、显存占用、KV Cache 使用率、各阶段耗时等指标，用于问题诊断。",
+      "problem": "推理性能问题涉及调度、显存、计算多个层面，缺乏全链路监控难以定位根因。",
+      "steps": [
+        "采集 GPU 指标",
+        "记录请求生命周期",
+        "可视化队列与延迟",
+        "设置告警阈值",
+        "根因分析"
+      ],
+      "impact": [
+        "故障定位 ↑",
+        "优化效率 ↑",
+        "SLA 保障 ↑"
+      ],
+      "related": [
+        "Benchmark",
+        "性能指标",
+        "调度器"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Observability",
+      "aliases": ["可观测性"],
+      "plainExplanation": "收集 GPU 利用率、显存占用、队列长度等指标，用于监控和诊断推理系统的运行状态。"
+    },
+    {
+      "id": "expertobs",
+      "title": "专家级负载分析",
+      "category": "eval",
+      "categoryLabel": "评测与工程化",
+      "day": 9,
+      "dayLabel": "第 9 / 14 天",
+      "summary": "路由质量、专家热度与通信分析",
+      "definition": "专家级观测分析 MoE 路由决策质量、各专家激活频率、All-to-All 通信延迟和负载不均衡程度，优化专家放置。",
+      "problem": "MoE 路由不均衡导致部分 GPU 过载，通信延迟成为瓶颈，需要细粒度分析。",
+      "steps": [
+        "记录路由决策分布",
+        "统计专家激活热力图",
+        "测量 All-to-All 延迟",
+        "分析负载均衡度",
+        "调整专家放置"
+      ],
+      "impact": [
+        "负载均衡 ↑",
+        "通信延迟 ↓",
+        "吞吐 ↑"
+      ],
+      "related": [
+        "MoE",
+        "Router",
+        "All-to-All"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Expert Analysis",
+      "plainExplanation": "监控 MoE 系统中每个专家的激活频率、路由决策质量和通信延迟。"
+    },
+    {
+      "id": "metrics",
+      "title": "核心性能指标体系",
+      "category": "eval",
+      "categoryLabel": "评测与工程化",
+      "day": 1,
+      "dayLabel": "第 1 / 14 天",
+      "summary": "TTFT、TPOT、吞吐、并发与分位延迟",
+      "definition": "大模型推理核心指标：TTFT（首 Token 时间）、TPOT（每 Token 时间）、Throughput（总吞吐）、Concurrency（并发数）、P95/P99 延迟。",
+      "problem": "单一指标无法全面评估系统性能，需要多维度指标体系。",
+      "steps": [
+        "测量 TTFT",
+        "测量 TPOT",
+        "计算总吞吐",
+        "统计延迟分位",
+        "综合分析瓶颈"
+      ],
+      "impact": [
+        "评估维度 ↑",
+        "优化方向明确",
+        "选型依据 ↑"
+      ],
+      "related": [
+        "Benchmark",
+        "可观测性",
+        "PD 分离"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Performance Metrics",
+      "aliases": ["性能指标"],
+      "plainExplanation": "衡量推理系统的核心指标：首字延迟、每字延迟、总吞吐量和延迟分位数。"
+    },
+    {
+      "id": "token",
+      "title": "子词分词与编码",
+      "category": "modelbase",
+      "categoryLabel": "模型基础",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "文本切分为子词单元并映射为模型输入 ID",
+      "definition": "Tokenizer 使用 BPE（Byte-Pair Encoding）、SentencePiece 或 WordPiece 算法将文本切分为子词（Subword）单元，再映射为整数 ID。",
+      "problem": "自然语言词汇量巨大，直接按词切分导致词表过大；按字切分则失去语义信息。",
+      "steps": [
+        "文本预处理",
+        "BPE/SentencePiece 切分",
+        "映射为 Token ID",
+        "添加特殊标记",
+        "填充或截断"
+      ],
+      "impact": [
+        "词表大小可控",
+        "未登录词减少",
+        "序列长度影响"
+      ],
+      "related": [
+        "Embedding",
+        "API",
+        "输入处理"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Tokenizer",
+      "plainExplanation": "把文本切成小片段并映射为整数 ID，是模型理解人类语言的第一步。"
+    },
+    {
+      "id": "embed",
+      "title": "词嵌入与位置编码",
+      "category": "modelbase",
+      "categoryLabel": "模型基础",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "Token ID 转为向量，并注入位置信息",
+      "definition": "Embedding 层将 Token ID 映射为稠密向量；位置编码（RoPE、ALiBi）注入顺序信息，使模型感知 Token 位置。",
+      "problem": "Transformer 本身不感知位置，需要显式编码位置信息，且需支持超长上下文外推。",
+      "steps": [
+        "Token Embedding 查表",
+        "添加位置编码",
+        "RoPE 旋转位置编码",
+        "ALiBi 偏置项",
+        "输入 Transformer"
+      ],
+      "impact": [
+        "语义表示 ↑",
+        "长上下文支持 ↑",
+        "计算量增加"
+      ],
+      "related": [
+        "Tokenizer",
+        "Transformer Block",
+        "RoPE"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Embedding & Positional Encoding",
+      "aliases": ["Embedding", "RoPE"],
+      "plainExplanation": "把整数 ID 转成高维向量，同时加入位置信息，让模型知道每个词的语义和顺序。"
+    },
+    {
+      "id": "block",
+      "title": "变换器计算单元",
+      "category": "modelbase",
+      "categoryLabel": "模型基础",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "Attention + FFN 的重复堆叠结构",
+      "definition": "Transformer Block 由 Multi-Head Attention、Feed-Forward Network、残差连接和 LayerNorm/RMSNorm 组成，是 Transformer 的核心计算单元。",
+      "problem": "单个 Block 计算量已很大，数十层堆叠后总参数量和计算量巨大，需要高效实现。",
+      "steps": [
+        "输入经过 LayerNorm",
+        "Multi-Head Attention",
+        "残差连接",
+        "FFN",
+        "再次残差连接"
+      ],
+      "impact": [
+        "表达能力 ↑",
+        "计算量 ↑",
+        "显存占用 ↑"
+      ],
+      "related": [
+        "Attention",
+        "FFN",
+        "残差连接"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Transformer Block",
+      "aliases": ["残差连接"],
+      "plainExplanation": "Transformer 的基本计算单元，包含注意力层、前馈层、残差连接和归一化。"
+    },
+    {
+      "id": "ffn",
+      "title": "前馈网络与归一化",
+      "category": "modelbase",
+      "categoryLabel": "模型基础",
+      "day": 2,
+      "dayLabel": "第 2 天",
+      "summary": "非线性信息加工与数值稳定",
+      "definition": "FFN（Feed-Forward Network）通常采用 SwiGLU 等门控结构，增加模型非线性表达能力；LayerNorm/RMSNorm 稳定深层网络训练。",
+      "problem": "仅靠 Attention 无法充分提取特征，需 FFN 进行局部非线性变换；深层网络梯度易爆炸或消失。",
+      "steps": [
+        "输入经过 RMSNorm",
+        "FFN 门控激活",
+        "残差连接",
+        "重复多层",
+        "输出 logits"
+      ],
+      "impact": [
+        "表达能力 ↑",
+        "参数量 ↑",
+        "稳定性 ↑"
+      ],
+      "related": [
+        "Transformer Block",
+        "Attention",
+        "SwiGLU"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "FFN & Normalization",
+      "aliases": ["SwiGLU"],
+      "plainExplanation": "对注意力输出进行非线性变换的子网络，通常采用 SwiGLU 门控结构。"
+    },
+    {
+      "id": "attn",
+      "title": "自注意力计算",
+      "category": "attention",
+      "categoryLabel": "Attention 机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "Token 间互相参考，聚合上下文信息",
+      "definition": "Self-Attention 让每个 Token 通过 Query 与所有 Token 的 Key 计算相似度（Attention Score），再用 Score 加权聚合所有 Value。",
+      "problem": "RNN 难以并行且长距离依赖弱；CNN 感受野有限。注意力机制直接建模任意距离依赖。",
+      "steps": [
+        "计算 Q、K、V 投影",
+        "Q×K^T 得注意力分数",
+        "Softmax 归一化",
+        "加权聚合 V",
+        "多头拼接"
+      ],
+      "impact": [
+        "并行度 ↑",
+        "长依赖 ↑",
+        "计算量 O(n²)"
+      ],
+      "related": [
+        "QKV",
+        "多头注意力",
+        "FlashAttention"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Self-Attention",
+      "aliases": ["Attention", "Attention 机制"],
+      "plainExplanation": "让每个词计算自己与所有词的关联程度，据此加权聚合上下文信息的机制。"
+    },
+    {
+      "id": "qkv",
+      "title": "查询-键-值投影",
+      "category": "attention",
+      "categoryLabel": "Attention 机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "输入向量映射为三个语义空间",
+      "definition": "Q（Query）代表当前 Token 的查询意图，K（Key）代表其他 Token 的索引特征，V（Value）代表实际要聚合的信息内容。",
+      "problem": "同一向量需同时承担三种语义角色，通过线性投影分离到不同子空间。",
+      "steps": [
+        "输入向量复制三份",
+        "分别乘以 Wq、Wk、Wv",
+        "得到 Q、K、V",
+        "计算注意力",
+        "输出投影"
+      ],
+      "impact": [
+        "表达能力 ↑",
+        "参数量 3×",
+        "计算量 ↑"
+      ],
+      "related": [
+        "Attention",
+        "MHA",
+        "GQA"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Q, K, V Projection",
+      "plainExplanation": "把输入向量分别投影成查询、键、值三个空间，用于后续注意力计算。"
+    },
+    {
+      "id": "mask",
+      "title": "时序掩码与多头注意力",
+      "category": "attention",
+      "categoryLabel": "Attention 机制",
+      "day": 3,
+      "dayLabel": "第 3 天",
+      "summary": "禁止偷看未来，多角度提取关系",
+      "definition": "Causal Mask 将未来位置的注意力分数设为负无穷，保证自回归生成只能依赖历史；Multi-Head 用多组 QKV 从不同角度提取关系。",
+      "problem": "自回归生成必须保证因果性，否则模型会作弊；单一注意力头可能遗漏不同维度的关系。",
+      "steps": [
+        "计算完整注意力分数",
+        "Causal Mask 上三角置零",
+        "多组独立 QKV",
+        "各头独立计算",
+        "拼接并投影"
+      ],
+      "impact": [
+        "因果性保证",
+        "表达能力 ↑",
+        "显存 ↑"
+      ],
+      "related": [
+        "Attention",
+        "QKV",
+        "MHA"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Causal Mask & Multi-Head",
+      "plainExplanation": "阻止模型在生成时看到未来的词，保证自回归的因果性；多头则是从多个角度并行计算。"
+    },
+    {
+      "id": "dense",
+      "title": "稠密神经网络",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "每层使用固定的稠密计算路径，不进行专家稀疏路由",
+      "definition": "Dense Model 的 Transformer 层对每个 Token 使用同一组稠密 Attention 与 FFN 权重，不像 MoE 那样只选择少数专家。参数量、激活参数口径与实际 FLOPs 不是同一量纲，不能直接画等号。",
+      "problem": "扩大稠密模型通常会同时增加权重容量、访存和逐 Token 计算需求，但具体增长取决于层数、隐藏维度、序列长度与算子实现。",
+      "steps": [
+        "每层走固定稠密路径",
+        "不进行专家 Top-K 路由",
+        "按结构计算权重与 FLOPs",
+        "结合序列和硬件验证成本"
+      ],
+      "impact": [
+        "简单直接",
+        "扩展成本高",
+        "训练稳定"
+      ],
+      "related": [
+        "MoE",
+        "FFN"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Dense Model",
+      "plainExplanation": "每个 Token 走相同的稠密层路径，不按 Token 选择少数专家；参数规模可提示容量，但不能直接等同于计算量。"
+    },
+    {
+      "id": "moe",
+      "title": "混合专家架构",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "总参数大，每步只激活部分专家",
+      "definition": "MoE（Mixture of Experts）用多个小型 FFN（专家）替换单个大型 FFN，通过路由门控每步只激活 Top-K 个专家，总参数远大于激活参数。",
+      "problem": "Dense 模型扩展成本高，MoE 在不增加每步计算量的前提下扩大模型容量。",
+      "steps": [
+        "输入经过 Router",
+        "选择 Top-K 专家",
+        "仅激活选中专家",
+        "加权聚合输出",
+        "负载均衡约束"
+      ],
+      "impact": [
+        "模型容量 ↑",
+        "激活参数不变",
+        "通信开销 ↑"
+      ],
+      "related": [
+        "Expert",
+        "Router",
+        "负载均衡"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Mixture of Experts",
+      "plainExplanation": "用多个小网络（专家）替换单个大网络，每步只激活少数专家，总参数远大于激活参数。"
+    },
+    {
+      "id": "expert",
+      "title": "专家网络单元",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "MoE 中的基本计算单元，本质是 FFN",
+      "definition": "Expert 是 MoE 中相互独立的 FFN 子网络，路由器为每个 Token 选择少量专家参与计算；专家分工由训练过程形成，并不预先规定。",
+      "problem": "单个 FFN 难以覆盖所有语义模式，多个专家分工可提升表达能力。",
+      "steps": [
+        "输入进入专家",
+        "独立 FFN 计算",
+        "输出激活值",
+        "Router 加权",
+        "聚合结果"
+      ],
+      "impact": [
+        "表达能力 ↑",
+        "显存 ↑",
+        "需负载均衡"
+      ],
+      "related": [
+        "MoE",
+        "Router",
+        "FFN"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Expert Network",
+      "plainExplanation": "MoE 中的基本计算单元，本质上是独立的前馈网络，由路由器按 Token 选择参与计算。"
+    },
+    {
+      "id": "router",
+      "title": "路由门控机制",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "给专家打分，选择 Top-K，分配权重",
+      "definition": "Router（Gating Network）根据输入向量计算每个专家的分数（Logits），通过 Softmax 归一化后选择 Top-K 个专家并分配权重。",
+      "problem": "路由决策质量直接影响 MoE 性能，且需避免所有 Token 涌向少数专家。",
+      "steps": [
+        "输入经过 Router 线性层",
+        "Softmax 得概率分布",
+        "选 Top-K 专家",
+        "分配权重",
+        "辅助负载均衡损失"
+      ],
+      "impact": [
+        "专家利用率 ↑",
+        "负载均衡约束",
+        "通信量 ↑"
+      ],
+      "related": [
+        "MoE",
+        "Expert",
+        "负载均衡"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Router & Top-K",
+      "plainExplanation": "根据输入特征给每个专家打分，选出分数最高的几个专家并分配权重。"
+    },
+    {
+      "id": "shared",
+      "title": "共享专家设计",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 8,
+      "dayLabel": "第 8 天",
+      "summary": "通用能力专家常驻激活，其他专家分工",
+      "definition": "Shared Expert 是所有 Token 都会经过的专家路径；训练可能让它承载较通用的模式，其他路由专家学习互补表示，但具体分工需通过模型分析验证。",
+      "problem": "仅使用路由专家可能产生表示冗余或路由负担；共享路径用于提供固定计算通道，但不单独保证模型能力。",
+      "steps": [
+        "所有 Token 经过共享专家",
+        "Router 选择额外专家",
+        "共享 + 专用输出聚合",
+        "训练路由策略"
+      ],
+      "impact": [
+        "固定共享路径",
+        "可能减少专家冗余",
+        "显存略增"
+      ],
+      "related": [
+        "MoE",
+        "Expert",
+        "Router"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Shared Expert",
+      "plainExplanation": "所有输入都会经过的公共专家路径，可与按 Token 选择的路由专家共同计算；专家实际分工由训练形成。"
+    },
+    {
+      "id": "choice",
+      "title": "路由策略选择",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 9,
+      "dayLabel": "第 9 天",
+      "summary": "Token 选专家 vs 专家选 Token",
+      "definition": "Token Choice（Top-K Router）为每个 Token 选择专家；Expert Choice 为每个专家选择固定容量内的 Token，因此专家负载更可控，但 Token 覆盖与组合规则取决于具体实现。",
+      "problem": "Token Choice 可能造成热点专家；Expert Choice 改变了路由约束，需要验证 Token 覆盖、容量与框架支持。",
+      "steps": [
+        "Token Choice: Token 选专家",
+        "Expert Choice: 专家选 Token",
+        "比较负载均衡度",
+        "选择适合策略"
+      ],
+      "impact": [
+        "负载均衡 ↑",
+        "Token 覆盖需验证",
+        "实现复杂度 ↑"
+      ],
+      "related": [
+        "Router",
+        "MoE",
+        "负载均衡"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Routing Strategy",
+      "plainExplanation": "Token Choice 从 Token 侧选专家；Expert Choice 从专家侧按容量选 Token，负载更可控，但覆盖方式依赖实现。"
+    },
+    {
+      "id": "balance",
+      "title": "专家负载均衡",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 9,
+      "dayLabel": "第 9 天",
+      "summary": "训练惩罚与推理动态调整",
+      "definition": "Load Balancing 通过辅助损失（如 Importance Loss、Load Loss）惩罚路由不均衡，推理时动态调整专家放置（EPLB）。",
+      "problem": "自然语言分布不均导致部分专家过度激活，其他专家闲置，浪费参数量。",
+      "steps": [
+        "统计专家激活频率",
+        "计算负载均衡损失",
+        "反向传播调整 Router",
+        "推理时动态放置",
+        "监控并调整"
+      ],
+      "impact": [
+        "专家利用率 ↑",
+        "训练稳定性 ↑",
+        "通信优化 ↑"
+      ],
+      "related": [
+        "Router",
+        "MoE",
+        "Expert Parallel"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Load Balancing",
+      "aliases": ["负载均衡"],
+      "plainExplanation": "通过辅助损失惩罚路由不均衡，推理时动态调整专家分布，防止部分专家闲置。"
+    },
+    {
+      "id": "ep",
+      "title": "专家并行",
+      "category": "moe",
+      "categoryLabel": "MoE 结构与路由",
+      "day": 9,
+      "dayLabel": "第 9 / 10 天",
+      "summary": "专家分布到多张 GPU，Token 按需路由",
+      "definition": "Expert Parallel（EP）将不同专家放置在不同 GPU 上，通过 All-to-All 通信将 Token 发送到对应专家所在 GPU，计算后再聚合。",
+      "problem": "单个 GPU 显存无法容纳所有专家，需分布式存储；Token 需跨卡路由。",
+      "steps": [
+        "专家均匀分布到 GPU",
+        "Token 按路由目标分组",
+        "All-to-All 发送",
+        "各卡本地计算",
+        "All-to-All 聚合"
+      ],
+      "impact": [
+        "单卡显存 ↓",
+        "通信量 ↑",
+        "扩展性 ↑"
+      ],
+      "related": [
+        "MoE",
+        "All-to-All",
+        "NCCL"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Expert Parallelism",
+      "aliases": ["Expert Parallel"],
+      "plainExplanation": "把不同专家放到不同 GPU 上，通过 All-to-All 通信分发 Token 和聚合结果。"
+    },
+    {
+      "id": "mha",
+      "title": "注意力 KV 共享策略",
+      "category": "attarch",
+      "categoryLabel": "Attention 架构",
+      "day": 7,
+      "dayLabel": "第 7 天",
+      "summary": "每头独立 KV / 全局共享 KV / 分组共享 KV",
+      "definition": "MHA（Multi-Head Attention）每个头有独立 K、V；MQA（Multi-Query）所有头共享一组 K、V；GQA（Grouped-Query）分组共享 K、V。",
+      "problem": "MHA 显存占用高（头数 × KV）；MQA 压缩大但可能损失质量；GQA 平衡两者。",
+      "steps": [
+        "MHA: h 组独立 KV",
+        "MQA: 1 组共享 KV",
+        "GQA: g 组共享 KV",
+        "压缩比: MHA < GQA < MQA",
+        "质量: MHA > GQA > MQA"
+      ],
+      "impact": [
+        "显存: MHA > GQA > MQA",
+        "速度: MQA > GQA > MHA",
+        "质量权衡"
+      ],
+      "related": [
+        "Attention",
+        "KV Cache",
+        "MLA"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "MHA / MQA / GQA",
+      "aliases": ["GQA", "多头注意力"],
+      "plainExplanation": "三种 KV 存储策略：每头独立、全局共享、分组共享，在显存和质量之间做权衡。"
+    },
+    {
+      "id": "mla",
+      "title": "低秩注意力压缩",
+      "category": "attarch",
+      "categoryLabel": "Attention 架构",
+      "day": 7,
+      "dayLabel": "第 7 天",
+      "summary": "压缩 K、V 后存储，推理时解压还原",
+      "definition": "MLA（Multi-head Latent Attention）通过低秩联合压缩减少需要持久缓存的表示维度；具体缓存结构与容量取决于模型实现和公开配置。",
+      "problem": "长上下文会线性增加持久缓存容量，需要结合模型架构、上下文长度和实现方式评估压缩方案。",
+      "steps": [
+        "K、V 投影到低维空间",
+        "存储压缩表示",
+        "推理时上采样还原",
+        "计算注意力",
+        "输出投影"
+      ],
+      "impact": [
+        "KV Cache ↓",
+        "长上下文 ↑",
+        "计算量略增"
+      ],
+      "related": [
+        "KV Cache",
+        "MHA",
+        "GQA"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "MLA",
+      "plainExplanation": "通过低秩表示减少需要持久缓存的维度，实际容量由模型的潜变量与位置编码配置决定。"
+    },
+    {
+      "id": "quant",
+      "title": "权重量化压缩",
+      "category": "compress",
+      "categoryLabel": "压缩与适配",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "FP16 → INT8 / INT4 / FP8 降低精度存储",
+      "definition": "Quantization 将模型权重从 FP16/BF16 转换为低精度整数（INT8、INT4）或 FP8，减少显存占用和访存带宽，配合反量化恢复精度。",
+      "problem": "大模型参数量巨大，FP16 存储占用高，推理时权重读取带宽成为瓶颈。",
+      "steps": [
+        "校准数据集统计分布",
+        "确定缩放因子（Scale）",
+        "权重映射到低精度",
+        "推理时反量化",
+        "可选 SmoothQuant 处理"
+      ],
+      "impact": [
+        "显存 ↓",
+        "带宽 ↓",
+        "精度轻微损失"
+      ],
+      "related": [
+        "AWQ",
+        "GPTQ",
+        "FP8"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Quantization",
+      "aliases": ["量化", "FP8"],
+      "plainExplanation": "把模型权重从 16 位浮点数转为 8 位或 4 位整数，减少显存和带宽消耗。"
+    },
+    {
+      "id": "awq",
+      "title": "感知与补偿量化",
+      "category": "compress",
+      "categoryLabel": "压缩与适配",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "按激活重要性 / 按误差补偿逐层量化",
+      "definition": "AWQ（Activation-aware Weight Quantization）根据激活幅度保护重要权重；GPTQ（General-purpose Post-Training Quantization）通过 OBS 逐层补偿量化误差。",
+      "problem": "简单均匀量化导致大权重/重要通道信息丢失，需感知重要性和误差补偿。",
+      "steps": [
+        "AWQ: 统计激活幅度",
+        "保护高激活通道",
+        "低精度量化其余",
+        "GPTQ: 逐层 OBS",
+        "Hessian 补偿误差"
+      ],
+      "impact": [
+        "INT4 可用",
+        "精度保持",
+        "推理加速"
+      ],
+      "related": [
+        "量化",
+        "FP8"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "AWQ & GPTQ",
+      "aliases": ["GPTQ"],
+      "plainExplanation": "根据激活幅度保护重要权重，或通过逐层误差补偿实现更低精度的量化。"
+    },
+    {
+      "id": "expquant",
+      "title": "专家级压缩",
+      "category": "compress",
+      "categoryLabel": "压缩与适配",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "按热度混合精度 + 删减融合专家",
+      "definition": "对 MoE 模型中的专家按激活频率排序，热门专家保持高精度，冷门专家量化为 INT4 或剪枝；也可合并相似专家减少总数。",
+      "problem": "MoE 总参数量极大，但并非所有专家同等重要，可针对性压缩。",
+      "steps": [
+        "统计专家激活热力图",
+        "热门专家 FP16",
+        "冷门专家 INT4",
+        "剪枝低贡献专家",
+        "合并相似专家"
+      ],
+      "impact": [
+        "总参数 ↓",
+        "显存 ↓",
+        "通信 ↓"
+      ],
+      "related": [
+        "MoE",
+        "量化"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Expert Quantization",
+      "plainExplanation": "对 MoE 的热门专家保持高精度，冷门专家量化或剪枝，甚至合并相似专家。"
+    },
+    {
+      "id": "distill",
+      "title": "模型蒸馏压缩",
+      "category": "compress",
+      "categoryLabel": "压缩与适配",
+      "day": 11,
+      "dayLabel": "第 11 天",
+      "summary": "小模型学习大模型的输出分布",
+      "definition": "Knowledge Distillation 让小模型（Student）学习大模型（Teacher）的软标签（Softmax 分布）和中间特征表示，而非仅学习硬标签。",
+      "problem": "大模型推理成本高，需保持能力的同时减小模型规模。",
+      "steps": [
+        "大模型生成软标签",
+        "小模型拟合软标签",
+        "中间层特征对齐",
+        "联合损失训练",
+        "评估能力保持"
+      ],
+      "impact": [
+        "模型尺寸 ↓",
+        "推理成本 ↓",
+        "能力保持 ↑"
+      ],
+      "related": [
+        "量化",
+        "LoRA"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Knowledge Distillation",
+      "plainExplanation": "让小模型学习大模型的输出分布和中间特征，在更小尺寸下保持相近能力。"
+    },
+    {
+      "id": "lora",
+      "title": "低秩适配微调",
+      "category": "compress",
+      "categoryLabel": "压缩与适配",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "只训练增量 ΔW = A×B，冻结原权重",
+      "definition": "LoRA（Low-Rank Adaptation）冻结预训练权重 W，仅训练低秩矩阵 A（d×r）和 B（r×k）的乘积作为增量 ΔW，大幅减少微调参数量。",
+      "problem": "全参数微调大模型需要大量显存和计算，且需存储完整模型副本。",
+      "steps": [
+        "冻结原权重 W",
+        "初始化低秩矩阵 A、B",
+        "训练 ΔW = A×B",
+        "推理时 W + ΔW",
+        "多 LoRA 切换"
+      ],
+      "impact": [
+        "微调参数 ↓",
+        "显存 ↓",
+        "多任务切换 ↑"
+      ],
+      "related": [
+        "MoE LoRA"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "LoRA",
+      "plainExplanation": "冻结原模型权重，只训练两个低秩矩阵的乘积作为增量，大幅减少微调成本。"
+    },
+    {
+      "id": "moelora",
+      "title": "专家级低秩适配",
+      "category": "compress",
+      "categoryLabel": "压缩与适配",
+      "day": 12,
+      "dayLabel": "第 12 天",
+      "summary": "按任务选择 LoRA，多租户服务",
+      "definition": "MoE LoRA 为不同任务训练独立的 LoRA 适配器，推理时通过路由选择对应 LoRA，实现多任务共享基座模型的服务架构。",
+      "problem": "单一 LoRA 难以覆盖所有任务，多任务需隔离适配器。",
+      "steps": [
+        "基座模型共享",
+        "各任务训练 LoRA",
+        "路由选择适配器",
+        "动态加载卸载",
+        "多租户隔离"
+      ],
+      "impact": [
+        "多任务支持 ↑",
+        "显存效率 ↑",
+        "部署灵活性 ↑"
+      ],
+      "related": [
+        "LoRA",
+        "MoE"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "MoE LoRA",
+      "plainExplanation": "为不同任务训练独立的 LoRA 适配器，共享基座模型，推理时动态切换。"
+    },
+    {
+      "id": "compute",
+      "title": "GPU 计算峰值性能",
+      "category": "gpu",
+      "categoryLabel": "GPU 关键维度",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "单位时间能执行多少浮点运算",
+      "definition": "GPU 计算峰值通常以 TFLOPS 表示，但具体数值必须同时注明 GPU SKU、计算精度、Tensor Core 模式和厂商规格；峰值不等于实际推理吞吐。",
+      "problem": "Prefill 通常包含大规模矩阵计算，需要将模型计算量、精度、算子实现与 GPU 峰值规格放在同一测试条件下评估。",
+      "steps": [
+        "确认 GPU 的具体 SKU",
+        "确认 FP16、BF16 或其他计算精度",
+        "核对厂商公布的峰值规格",
+        "结合算子和工作负载测量实际利用率"
+      ],
+      "impact": [
+        "帮助判断计算资源上限",
+        "不能单独推出端到端延迟",
+        "需要与显存带宽和通信能力一起评估"
+      ],
+      "related": [
+        "GEMM",
+        "GPU 利用率",
+        "硬件选型"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "GPU Compute",
+      "aliases": ["GPU 算力"],
+      "plainExplanation": "GPU 每秒能执行的浮点运算次数，直接决定 Prefill 阶段的计算速度。"
+    },
+    {
+      "id": "vram",
+      "title": "HBM 显存容量",
+      "category": "gpu",
+      "categoryLabel": "GPU 关键维度",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "能存储多大的模型和 KV Cache",
+      "definition": "GPU 显存容量决定可分配给模型权重、KV Cache、激活值和运行时缓冲区的总预算；不同 GPU SKU 的容量不同，不能只用一个型号概括。",
+      "problem": "大模型权重与长上下文 KV Cache 可能共同超过可用显存，需要通过精度、并行方式、上下文长度和批次进行容量规划。",
+      "steps": [
+        "估算模型权重载荷",
+        "估算 KV Cache 容量",
+        "预留激活值和运行时缓冲区",
+        "核对单卡与多卡容量预算",
+        "超出预算时调整部署方案"
+      ],
+      "impact": [
+        "模型规模上限",
+        "上下文长度上限",
+        "并发数上限"
+      ],
+      "related": [
+        "KV Cache",
+        "量化",
+        "并行策略"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "HBM Memory",
+      "aliases": ["显存容量"],
+      "plainExplanation": "GPU 的显存容量，决定能加载多大的模型、能缓存多长的对话历史。"
+    },
+    {
+      "id": "bw",
+      "title": "显存访问带宽",
+      "category": "gpu",
+      "categoryLabel": "GPU 关键维度",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "HBM 与计算单元间的数据搬运速度",
+      "definition": "显存带宽描述 HBM 与计算单元之间的数据搬运能力，具体数值取决于 GPU SKU、显存类型和厂商规格；Decode 是否受带宽限制还取决于工作负载和实现。",
+      "problem": "Decode 往往需要反复读取权重和历史 KV Cache，数据搬运可能成为瓶颈，但不能仅凭峰值带宽推出实际 TPOT。",
+      "steps": [
+        "确认 GPU SKU 与厂商带宽规格",
+        "分析权重和 KV Cache 的读取量",
+        "观察算子访存与缓存命中情况",
+        "结合工作负载测量 Decode 表现"
+      ],
+      "impact": [
+        "影响访存受限算子的上限",
+        "可能成为 Decode 瓶颈",
+        "不能单独代表端到端速度"
+      ],
+      "related": [
+        "GPU 算力",
+        "KV Cache",
+        "FlashAttention"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Memory Bandwidth",
+      "plainExplanation": "显存和计算单元之间的数据传输速度，Decode 阶段每次都要读取全部 KV，带宽是关键瓶颈。"
+    },
+    {
+      "id": "util",
+      "title": "GPU 计算资源利用率",
+      "category": "gpu",
+      "categoryLabel": "GPU 关键维度",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "实际计算时间占总时间的比例",
+      "definition": "GPU 利用率衡量 SM（Streaming Multiprocessor）实际执行计算指令的时间占比，受内存带宽、Kernel 启动开销和批处理大小影响。",
+      "problem": "小 Batch 或频繁内存访问时 GPU 利用率低，计算单元大量等待。",
+      "steps": [
+        "监控 SM 占用率",
+        "分析 Kernel 执行时间",
+        "识别内存瓶颈",
+        "优化批大小",
+        "融合算子"
+      ],
+      "impact": [
+        "吞吐 ↑",
+        "成本 ↓",
+        "延迟 ↓"
+      ],
+      "related": [
+        "GPU 算力",
+        "Kernel 优化",
+        "CUDA Graph"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "GPU Utilization",
+      "aliases": ["GPU 利用率"],
+      "plainExplanation": "GPU 实际执行计算指令的时间占比，Batch 太小或访存太多会导致利用率低。"
+    },
+    {
+      "id": "nvlink",
+      "title": "NVLink 高速互联",
+      "category": "interconnect",
+      "categoryLabel": "互联与拓扑",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "GPU 间专用高带宽互连总线",
+      "definition": "NVLink 是 GPU 间的专用互联技术，实际带宽、方向口径和拓扑取决于 GPU 代际、桥接方式、NVSwitch 与服务器设计。",
+      "problem": "张量并行等多卡推理需要在 GPU 间交换中间结果，互联带宽和拓扑会影响通信等待。",
+      "steps": [
+        "确认 GPU 与互联代际",
+        "确认直连、交换芯片或 PCIe 拓扑",
+        "确定通信集合与消息规模",
+        "结合框架和工作负载测量通信开销"
+      ],
+      "impact": [
+        "影响多卡通信上限",
+        "拓扑不匹配会增加等待",
+        "需要与并行策略一起评估"
+      ],
+      "related": [
+        "NVSwitch",
+        "PCIe",
+        "拓扑"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "NVLink",
+      "plainExplanation": "GPU 间的专用互联通道，许多受支持配置可提供高于 PCIe 的 GPU 间带宽；实际值必须按 GPU、NVLink、NVSwitch 与拓扑代际核对。"
+    },
+    {
+      "id": "topo",
+      "title": "系统互连架构",
+      "category": "interconnect",
+      "categoryLabel": "互联与拓扑",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "PCIe、网络与集群拓扑设计",
+      "definition": "系统互连包括 PCIe（CPU-GPU）、InfiniBand/RoCE（节点间）、NVSwitch（GPU 全连接），拓扑设计影响通信延迟和扩展效率。",
+      "problem": "不同并行策略（TP/PP/DP）对互联带宽要求不同，需匹配拓扑设计。",
+      "steps": [
+        "节点内 NVLink",
+        "节点间 InfiniBand",
+        "集群 Fat-Tree 拓扑",
+        "Dragonfly+ 扩展",
+        "延迟与带宽权衡"
+      ],
+      "impact": [
+        "扩展性 ↑",
+        "通信延迟 ↓",
+        "成本 ↑"
+      ],
+      "related": [
+        "NVLink",
+        "并行策略",
+        "NCCL"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Interconnect Topology",
+      "aliases": ["NVSwitch", "PCIe", "拓扑"],
+      "plainExplanation": "数据中心内 GPU 的互联架构，包括机柜内 NVLink、机柜间 InfiniBand 等层级设计。"
+    },
+    {
+      "id": "tp_pp_dp",
+      "title": "基础并行策略",
+      "category": "parallel",
+      "categoryLabel": "多卡并行与通信",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "张量 / 流水线 / 数据并行",
+      "definition": "TP（Tensor Parallel）切分权重矩阵到多张卡；PP（Pipeline Parallel）切分层到多张卡；DP（Data Parallel）复制模型到多张卡处理不同数据。",
+      "problem": "单卡显存和算力有限，需分布式扩展。",
+      "steps": [
+        "TP: 列切分/行切分",
+        "PP: 层间切分",
+        "DP: 数据分片",
+        "组合使用",
+        "通信同步"
+      ],
+      "impact": [
+        "显存扩展 ↑",
+        "吞吐 ↑",
+        "通信开销 ↑"
+      ],
+      "related": [
+        "EP",
+        "CP",
+        "NVLink"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "TP / PP / DP",
+      "aliases": ["并行策略", "TP", "PP"],
+      "plainExplanation": "三种基础并行：把层内矩阵切开（TP）、把模型按层切开（PP）、复制整个模型处理不同数据（DP）。"
+    },
+    {
+      "id": "ep_cp_sp",
+      "title": "扩展并行策略",
+      "category": "parallel",
+      "categoryLabel": "多卡并行与通信",
+      "day": 13,
+      "dayLabel": "第 13 天",
+      "summary": "专家 / 上下文 / 序列并行",
+      "definition": "EP（Expert Parallel）将专家分布到不同卡；CP（Context Parallel）切分长上下文序列；SP（Sequence Parallel）切分序列维度并行计算。",
+      "problem": "MoE 专家数多、上下文超长，基础并行策略无法高效处理。",
+      "steps": [
+        "EP: 专家分布到卡",
+        "CP: 上下文分片",
+        "SP: 序列维度切分",
+        "Ring Attention",
+        "组合并行"
+      ],
+      "impact": [
+        "MoE 扩展 ↑",
+        "长上下文 ↑",
+        "复杂度 ↑"
+      ],
+      "related": [
+        "TP",
+        "PP",
+        "All-to-All"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "EP / CP / SP",
+      "aliases": ["CP"],
+      "plainExplanation": "三种扩展并行：把专家分布到不同卡（EP）、把长上下文切开（CP）、在序列维度并行（SP）。"
+    },
+    {
+      "id": "dispatch",
+      "title": "专家分发与聚合",
+      "category": "parallel",
+      "categoryLabel": "多卡并行与通信",
+      "day": 10,
+      "dayLabel": "第 10 天",
+      "summary": "Token 路由到专家 GPU，结果回传合并",
+      "definition": "Dispatch 阶段通过 All-to-All 将 Token 发送到目标专家所在 GPU；Combine 阶段将各专家的输出按权重聚合回传。",
+      "problem": "MoE 路由导致大量跨卡通信，需高效实现。",
+      "steps": [
+        "Router 决定目标专家",
+        "Token 按专家分组",
+        "All-to-All Dispatch",
+        "专家本地计算",
+        "All-to-All Combine"
+      ],
+      "impact": [
+        "通信量 ↑",
+        "负载均衡关键",
+        "扩展性 ↑"
+      ],
+      "related": [
+        "MoE",
+        "All-to-All",
+        "EP"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Dispatch & Combine",
+      "plainExplanation": "MoE 中把 Token 按目标专家分组发送到对应 GPU，计算完再把结果聚合回来。"
+    },
+    {
+      "id": "alltoall",
+      "title": "全交换通信模式",
+      "category": "parallel",
+      "categoryLabel": "多卡并行与通信",
+      "day": 10,
+      "dayLabel": "第 10 天",
+      "summary": "每张卡都发都收的集体通信",
+      "definition": "All-to-All 是集体通信原语，每张 GPU 向所有其他 GPU 发送数据并接收数据，是 MoE Dispatch/Combine 的核心通信模式。",
+      "problem": "All-to-All 通信量随卡数线性增长，高并发时延迟敏感。",
+      "steps": [
+        "数据按目标分组",
+        "发送给所有卡",
+        "接收所有卡数据",
+        "整理缓冲区",
+        "异步流水线"
+      ],
+      "impact": [
+        "通信延迟 ↑",
+        "带宽敏感",
+        "EP 必需"
+      ],
+      "related": [
+        "Dispatch",
+        "NCCL",
+        "EP"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "All-to-All",
+      "plainExplanation": "每张 GPU 都向所有其他 GPU 发送并接收数据的集体通信操作。"
+    },
+    {
+      "id": "nccl",
+      "title": "NVIDIA 集体通信库",
+      "category": "parallel",
+      "categoryLabel": "多卡并行与通信",
+      "day": 10,
+      "dayLabel": "第 10 天",
+      "summary": "多 GPU 间 AllReduce/AllGather/All-to-All 的标准实现",
+      "definition": "NCCL（NVIDIA Collective Communications Library）提供 AllReduce、AllGather、Broadcast、All-to-All 等原语的高性能 GPU 实现，深度优化 NVLink 和 InfiniBand。",
+      "problem": "手动实现多卡通信复杂且性能差，需标准化库支持。",
+      "steps": [
+        "初始化 NCCL Communicator",
+        "注册 GPU Buffer",
+        "调用 AllReduce/All-to-All",
+        "异步执行",
+        "同步完成"
+      ],
+      "impact": [
+        "开发效率 ↑",
+        "性能优化 ↑",
+        "扩展性 ↑"
+      ],
+      "related": [
+        "All-to-All",
+        "NVLink",
+        "并行策略"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "NCCL",
+      "plainExplanation": "NVIDIA 提供的多 GPU 集体通信库，优化了 AllReduce、All-to-All 等操作的性能。"
+    },
+    {
+      "id": "models",
+      "title": "GPU 芯片等级分类",
+      "category": "hardware",
+      "categoryLabel": "机型与选型",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "消费级、专业卡、数据中心芯片",
+      "definition": "GPU 可按消费级、工作站级和数据中心级等定位分类；选型应依据显存容量、精度支持、互联拓扑、软件兼容性、功耗和预算等约束。",
+      "problem": "不同部署目标的资源约束不同，不能用“最高性能”或“性价比”这样的单一标签替代具体评测。",
+      "steps": [
+        "明确模型、精度和上下文长度",
+        "估算权重与 KV Cache 容量",
+        "核对算力、带宽和互联需求",
+        "确认软件栈与部署形态",
+        "在统一工作负载下比较成本与性能"
+      ],
+      "impact": [
+        "影响可部署的模型规模",
+        "影响并行拓扑与扩展方式",
+        "影响整体采购和运维成本"
+      ],
+      "related": [
+        "GPU 算力",
+        "显存容量",
+        "配型建议"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "GPU Selection",
+      "aliases": ["GPU 型号"],
+      "plainExplanation": "GPU 按用途分为消费级、专业级和数据中心级，算力、显存和互联能力差异显著。"
+    },
+    {
+      "id": "sizing",
+      "title": "部署方案选型",
+      "category": "hardware",
+      "categoryLabel": "机型与选型",
+      "day": 14,
+      "dayLabel": "第 14 天",
+      "summary": "按模型规模、延迟和预算选择硬件与并行策略",
+      "definition": "硬件选型需综合考虑模型参数量、上下文长度、目标延迟、并发数和预算，决定单卡/多卡、量化精度、并行策略和框架选择。",
+      "problem": "没有通用最优配置，需针对业务约束权衡取舍。",
+      "steps": [
+        "估算显存需求",
+        "确定延迟目标",
+        "选择并行策略",
+        "量化降低需求",
+        "压测验证"
+      ],
+      "impact": [
+        "成本可控",
+        "性能达标",
+        "可扩展"
+      ],
+      "related": [
+        "GPU 型号",
+        "Benchmark",
+        "量化"
+      ],
+      "source": "llm-inference-panorama.html",
+      "englishTitle": "Deployment Sizing",
+      "aliases": ["硬件选型", "配型建议"],
+      "plainExplanation": "根据模型大小、延迟要求和预算，选择合适的 GPU 数量、并行策略和量化方案。"
+    }
+  ]
+}
