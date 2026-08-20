@@ -50,7 +50,7 @@ jobs:
           if (response.status !== 200 || !body.answer) process.exit(1);
           NODE
 
-      - name: PPT outline and PPTX rendering respond
+      - name: PPT outline responds
         run: |
           node <<'NODE'
           const outline = await fetch(process.env.BASE_URL + '/api/skills/ppt/outline', {
@@ -70,7 +70,25 @@ jobs:
             console.log({ outlineStatus: outline.status, outlineBody });
             process.exit(1);
           }
+          console.log({ outlineStatus: outline.status, slides: outlineBody.spec.slides.length });
+          NODE
 
+      - name: PPTX rendering responds
+        run: |
+          node <<'NODE'
+          const outline = await fetch(process.env.BASE_URL + '/api/skills/ppt/outline', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              source: {
+                type: 'page',
+                label: 'KV Cache',
+                content: 'KV Cache 保存注意力键值状态，用于避免重复计算。',
+              },
+              preferences: { slideCount: 4, title: 'KV Cache 技术说明' },
+            }),
+          });
+          const outlineBody = await outline.json();
           const render = await fetch(process.env.BASE_URL + '/api/skills/ppt/render', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
