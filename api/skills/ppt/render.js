@@ -33,10 +33,10 @@ export async function handlePptRenderRequest(request, env = process.env) {
       },
     });
   } catch (error) {
+    console.error('[ppt-render]', error?.stack || error?.message || error);
     const status = Number(error.status) || 500;
     return Response.json({ error: { code: error.code || 'PPT_RENDER_FAILED', message: error.message } }, { status, headers: corsHeaders(request, env) });
   }
 }
 
 export default { fetch: (request) => handlePptRenderRequest(request, process.env) };
-

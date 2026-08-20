@@ -96,7 +96,11 @@ jobs:
           });
           const pptx = Buffer.from(await render.arrayBuffer());
           console.log({ renderStatus: render.status, pptxBytes: pptx.length });
-          if (render.status !== 200 || pptx[0] !== 0x50 || pptx[1] !== 0x4b) process.exit(1);
+          if (render.status !== 200 || pptx[0] !== 0x50 || pptx[1] !== 0x4b) {
+            const detail = pptx.toString('utf8').slice(0, 500).replace(/[\r\n]+/g, ' ');
+            console.log(`::error title=PPTX render ${render.status}::${detail}`);
+            process.exit(1);
+          }
           NODE
 
       - name: Private model endpoints are rejected
