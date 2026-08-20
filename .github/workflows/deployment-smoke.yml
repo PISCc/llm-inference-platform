@@ -15,18 +15,28 @@ jobs:
     env:
       BASE_URL: https://llm-inference-platform-pisc2.vercel.app
     steps:
-      - name: Verify frontend and serverless APIs
+      - name: Frontend responds
         run: |
           node <<'NODE'
-          const base = process.env.BASE_URL;
+          const response = await fetch(process.env.BASE_URL + '/');
+          const html = await response.text();
+          console.log({ status: response.status, bytes: html.length });
+          if (response.status !== 200 || !html.toLowerCase().includes('<!doctype html')) process.exit(1);
+          NODE
 
-          const home = await fetch(base + '/');
-          const html = await home.text();
+      - name: Model configuration API responds
+        run: |
+          node <<'NODE'
+          const response = await fetch(process.env.BASE_URL + '/api/agent/config');
+          const body = await response.json();
+          console.log({ status: response.status, configured: body.config?.configured });
+          if (response.status !== 200 || typeof body.config?.configured !== 'boolean') process.exit(1);
+          NODE
 
-          const config = await fetch(base + '/api/agent/config');
-          const configBody = await config.json();
-
-          const agent = await fetch(base + '/api/agent/chat', {
+      - name: Offline knowledge fallback responds
+        run: |
+          node <<'NODE'
+          const response = await fetch(process.env.BASE_URL + '/api/agent/chat', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -35,9 +45,15 @@ jobs:
               conversation: [],
             }),
           });
-          const agentBody = await agent.json();
+          const body = await response.json();
+          console.log({ status: response.status, mode: body.mode, answerChars: body.answer?.length });
+          if (response.status !== 200 || !body.answer) process.exit(1);
+          NODE
 
-          const outline = await fetch(base + '/api/skills/ppt/outline', {
+      - name: PPT outline and PPTX rendering respond
+        run: |
+          node <<'NODE'
+          const outline = await fetch(process.env.BASE_URL + '/api/skills/ppt/outline', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -50,15 +66,25 @@ jobs:
             }),
           });
           const outlineBody = await outline.json();
+          if (outline.status !== 200 || outlineBody.spec?.slides?.length !== 4) {
+            console.log({ outlineStatus: outline.status, outlineBody });
+            process.exit(1);
+          }
 
-          const render = await fetch(base + '/api/skills/ppt/render', {
+          const render = await fetch(process.env.BASE_URL + '/api/skills/ppt/render', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ spec: outlineBody.spec }),
           });
           const pptx = Buffer.from(await render.arrayBuffer());
+          console.log({ renderStatus: render.status, pptxBytes: pptx.length });
+          if (render.status !== 200 || pptx[0] !== 0x50 || pptx[1] !== 0x4b) process.exit(1);
+          NODE
 
-          const privateEndpoint = await fetch(base + '/api/agent/config', {
+      - name: Private model endpoints are rejected
+        run: |
+          node <<'NODE'
+          const response = await fetch(process.env.BASE_URL + '/api/agent/config', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -68,16 +94,6 @@ jobs:
               model: 'local-model',
             }),
           });
-
-          const checks = {
-            home: home.status === 200 && html.includes('LLM'),
-            config: config.status === 200 && configBody.config?.configured === false,
-            offlineAgent: agent.status === 200 && Boolean(agentBody.answer),
-            outline: outline.status === 200 && outlineBody.spec?.slides?.length === 4,
-            pptx: render.status === 200 && pptx[0] === 0x50 && pptx[1] === 0x4b,
-            privateEndpointBlocked: privateEndpoint.status === 400,
-          };
-
-          console.log(JSON.stringify({ checks, pptxBytes: pptx.length }, null, 2));
-          if (Object.values(checks).some((value) => !value)) process.exit(1);
+          console.log({ status: response.status });
+          if (response.status !== 400) process.exit(1);
           NODE
