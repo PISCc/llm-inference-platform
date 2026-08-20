@@ -1,0 +1,83 @@
+name: Production smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://llm-inference-platform-pisc2.vercel.app
+    steps:
+      - name: Verify frontend and serverless APIs
+        run: |
+          node <<'NODE'
+          const base = process.env.BASE_URL;
+
+          const home = await fetch(base + '/');
+          const html = await home.text();
+
+          const config = await fetch(base + '/api/agent/config');
+          const configBody = await config.json();
+
+          const agent = await fetch(base + '/api/agent/chat', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              query: '什么是 KV Cache？',
+              pageContext: { pageId: 'agent', pageTitle: 'AI 技术问答' },
+              conversation: [],
+            }),
+          });
+          const agentBody = await agent.json();
+
+          const outline = await fetch(base + '/api/skills/ppt/outline', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              source: {
+                type: 'page',
+                label: 'KV Cache',
+                content: 'KV Cache 保存注意力键值状态，用于避免重复计算。',
+              },
+              preferences: { slideCount: 4, title: 'KV Cache 技术说明' },
+            }),
+          });
+          const outlineBody = await outline.json();
+
+          const render = await fetch(base + '/api/skills/ppt/render', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ spec: outlineBody.spec }),
+          });
+          const pptx = Buffer.from(await render.arrayBuffer());
+
+          const privateEndpoint = await fetch(base + '/api/agent/config', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              provider: 'vllm-local',
+              baseUrl: 'http://127.0.0.1:8000/v1',
+              apiKey: 'not-a-real-key',
+              model: 'local-model',
+            }),
+          });
+
+          const checks = {
+            home: home.status === 200 && html.includes('LLM'),
+            config: config.status === 200 && configBody.config?.configured === false,
+            offlineAgent: agent.status === 200 && Boolean(agentBody.answer),
+            outline: outline.status === 200 && outlineBody.spec?.slides?.length === 4,
+            pptx: render.status === 200 && pptx[0] === 0x50 && pptx[1] === 0x4b,
+            privateEndpointBlocked: privateEndpoint.status === 400,
+          };
+
+          console.log(JSON.stringify({ checks, pptxBytes: pptx.length }, null, 2));
+          if (Object.values(checks).some((value) => !value)) process.exit(1);
+          NODE
