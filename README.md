@@ -242,9 +242,19 @@ llm-inference-platform/
 - 单文件静态构建
 - `file://` 离线打开
 - Vercel 静态前端与 Node.js Functions
+- Render 免费 Node Web Service（前端、AI API 与 PPTX API 同源运行）
 - 云端 PPTX 内存渲染
 
-推荐在 Vercel 导入本仓库，使用 `npm run build` 和 `dist` 输出目录。在线模型密钥只填写到 Vercel 服务端环境变量；不要创建任何包含密钥的 `VITE_*` 变量。部署环境不设置 `VITE_AGENT_API_URL` 时，前端会自动调用同域 `/api`。
+推荐部署方式：如果访问网络能够稳定连接 Vercel，可使用 Vercel 的 `npm run build` 和 `dist` 输出目录；如果 `vercel.app` 在所在网络不可访问，可使用 Render Web Service，配置已写入 `render.yaml`。
+
+Render 配置：
+
+- Build Command：`npm ci && npm run build`
+- Start Command：`npm start`
+- Health Check：`/`
+- 免费实例会在空闲约 15 分钟后休眠，首次请求可能需要等待实例唤醒。
+
+在线模型密钥只填写到部署平台的服务端环境变量；不要创建任何包含密钥的 `VITE_*` 变量。部署环境不设置 `VITE_AGENT_API_URL` 时，前端会自动调用同域 `/api`。Render 和 Vercel 都支持当前 Node API 与 PPTX 服务；仅部署静态 `dist` 时仍无法调用服务端接口。
 
 ## 安全说明
 
