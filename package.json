@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite",
     "agent:dev": "node --env-file-if-exists=.env server/dev-agent.mjs",
+    "start": "node server/dev-agent.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
