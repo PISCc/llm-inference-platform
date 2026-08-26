@@ -1,18 +1,100 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { handleAgentHttpRequest } from '../api/agent/chat.js';
 import { handlePptOutlineRequest } from '../api/skills/ppt/outline.js';
 import { handlePptRenderRequest } from '../api/skills/ppt/render.js';
 import { handleAgentConfigRequest } from '../api/agent/config.js';
 import { handleAgentConfigTestRequest } from '../api/agent/config/test.js';
 
-const host = process.env.AGENT_DEV_HOST || '127.0.0.1';
-const port = Number(process.env.AGENT_DEV_PORT || 8787);
+const isHosted = Boolean(process.env.PORT || process.env.RENDER);
+const host = process.env.AGENT_DEV_HOST || (isHosted ? '0.0.0.0' : '127.0.0.1');
+const port = Number(process.env.PORT || process.env.AGENT_DEV_PORT || 8787);
+const distRoot = path.resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
+const mimeTypes = {
+  '.css': 'text/css; charset=utf-8',
+  '.gif': 'image/gif',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+function isApiPath(pathname) {
+  return pathname === '/api' || pathname.startsWith('/api/');
+}
+
+function sendStaticFile(response, filePath, status = 200) {
+  const extension = path.extname(filePath).toLowerCase();
+  response.writeHead(status, {
+    'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    'Content-Type': mimeTypes[extension] || 'application/octet-stream',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  fs.createReadStream(filePath).on('error', () => response.end()).pipe(response);
+}
+
+function serveStatic(pathname, response) {
+  if (!fs.existsSync(distRoot)) {
+    response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Frontend build is not available. Run npm run build first.');
+    return;
+  }
+
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    decodedPath = '/';
+  }
+  const requestedPath = path.resolve(distRoot, `.${decodedPath}`);
+  const insideDist = requestedPath === distRoot || requestedPath.startsWith(`${distRoot}${path.sep}`);
+  const candidate = insideDist ? requestedPath : path.join(distRoot, 'index.html');
+  const indexPath = path.join(distRoot, 'index.html');
+
+  fs.stat(candidate, (error, stats) => {
+    if (!error && stats.isFile()) {
+      sendStaticFile(response, candidate);
+      return;
+    }
+    if (!error && stats.isDirectory()) {
+      const nestedIndex = path.join(candidate, 'index.html');
+      fs.stat(nestedIndex, (nestedError, nestedStats) => {
+        if (!nestedError && nestedStats.isFile()) sendStaticFile(response, nestedIndex);
+        else sendStaticFile(response, indexPath);
+      });
+      return;
+    }
+    sendStaticFile(response, indexPath);
+  });
+}
 
 const server = http.createServer(async (request, response) => {
+  const url = new URL(request.url || '/', `http://${request.headers.host || `${host}:${port}`}`);
+
+  if (!isApiPath(url.pathname) && ['GET', 'HEAD'].includes(request.method || 'GET')) {
+    if (request.method === 'HEAD') {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.end();
+      return;
+    }
+    serveStatic(url.pathname, response);
+    return;
+  }
+
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
-  const url = new URL(request.url || '/', `http://${request.headers.host || `${host}:${port}`}`);
   const webRequest = new Request(url, {
     method: request.method,
     headers: request.headers,
@@ -49,6 +131,6 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Agent API listening on http://${host}:${port}/api/agent/chat`);
+  console.log(`LLM inference platform listening on http://${host}:${port}`);
   console.log('PPT Skill endpoints: /api/skills/ppt/outline, /api/skills/ppt/render');
 });
