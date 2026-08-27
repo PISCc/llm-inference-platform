@@ -3,16 +3,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowRight, GitCommit, Hash, Folder, Sparkles, Lightbulb } from 'lucide-react';
 import Badge from './Badge.jsx';
 import ModuleIcon from './ModuleIcon.jsx';
+import { cn } from '../utils/cn.js';
 
 function FlowArrow({ accent }) {
   const uid = useId().replace(/:/g, '');
   const clipId = `flow-arrow-clip-${uid}`;
   const beamId = `flow-arrow-beam-${uid}`;
   const palette = accent === 'violet'
-    ? { base: '#8b5cf6', beam: '#ddd6fe' }
+    ? { base: '#7a5f8d', beam: '#d3c2d5' }
     : accent === 'emerald'
-      ? { base: '#10b981', beam: '#a7f3d0' }
-      : { base: '#06b6d4', beam: '#a5f3fc' };
+      ? { base: '#5c7f65', beam: '#bfd2c3' }
+      : { base: '#46728a', beam: '#b5cbd6' };
   const arrowPath = 'M2 8.25H18V3.5L30 11L18 18.5V13.75H2Z';
 
   return (
@@ -295,8 +296,3 @@ export default function ModuleModal({ module, accent = 'cyan', onClose, resolveR
     </AnimatePresence>
   );
 }
-
-function cn(...inputs) {
-  return inputs.filter(Boolean).join(' ');
-}
-

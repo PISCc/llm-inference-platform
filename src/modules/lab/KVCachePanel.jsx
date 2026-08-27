@@ -40,6 +40,7 @@ export default function KVCachePanel({ params, setParams, calcResult, modelWeigh
       ...patch,
       parameterCountB: null,
       referenceName: null,
+      gqaKVHeads: null,
     }));
   };
 
@@ -56,8 +57,11 @@ export default function KVCachePanel({ params, setParams, calcResult, modelWeigh
       architecture: cfg.architecture,
       parameterCountB: cfg.parameterCountB,
       referenceName: cfg.name,
+      gqaKVHeads: cfg.architecture === 'GQA' ? cfg.numKVHeads : null,
       kvLatentDim: cfg.kvLatentDim ?? current.kvLatentDim,
+      qkNopeHeadDim: cfg.qkNopeHeadDim ?? current.qkNopeHeadDim,
       ropeHeadDim: cfg.ropeHeadDim ?? current.ropeHeadDim,
+      valueHeadDim: cfg.valueHeadDim ?? current.valueHeadDim,
     }));
   };
 
@@ -99,7 +103,7 @@ export default function KVCachePanel({ params, setParams, calcResult, modelWeigh
               </button>
             ))}
           </div>
-          <p className="mt-3 text-[10px] leading-relaxed text-space-600">页面统一用所选字节数估算权重载荷和 KV Cache；真实系统可为权重与缓存分别选择数据类型，并存在量化元数据等额外开销。</p>
+          <p className="mt-3 text-[10px] leading-relaxed text-space-600">权重和 KV Cache 按所选字节数计算。</p>
         </GlowCard>
       </div>
 
@@ -116,23 +120,22 @@ export default function KVCachePanel({ params, setParams, calcResult, modelWeigh
             <div className="mt-3 min-h-0 flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={layerData} margin={{ top: 8, right: 8, bottom: 8, left: 2 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                  <XAxis dataKey="layer" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} width={48} label={{ value: 'GiB / 层', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }} />
-                  <ReTooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 10, fontSize: 12 }} formatter={(value, name) => [`${Number(value).toFixed(3)} GiB`, name]} />
-                  <Bar dataKey="kv" stackId="a" fill="#10b981" name="KV Cache / 层" />
-                  <Bar dataKey="model" stackId="a" fill="#3b82f6" radius={[4, 4, 0, 0]} name="权重平均载荷 / 层" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ded7ca" vertical={false} />
+                  <XAxis dataKey="layer" tick={{ fill: '#777066', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#777066', fontSize: 10 }} width={48} label={{ value: 'GiB / 层', angle: -90, position: 'insideLeft', fill: '#777066', fontSize: 10 }} />
+                  <ReTooltip contentStyle={{ background: '#fbf8f2', border: '1px solid #ded7ca', borderRadius: 10, color: '#2b2925', fontSize: 12 }} formatter={(value, name) => [`${Number(value).toFixed(3)} GiB`, name]} />
+                  <Bar dataKey="kv" stackId="a" fill="#5c7f65" name="KV Cache / 层" />
+                  <Bar dataKey="model" stackId="a" fill="#46728a" radius={[4, 4, 0, 0]} name="权重平均载荷 / 层" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 text-[10px] leading-relaxed text-space-600">KV Cache 按公式得到每层容量；权重总载荷仅为便于比较而按层平均摊分，不代表各层真实参数分布。</p>
+            <p className="mt-2 text-[10px] leading-relaxed text-space-600">显示每层 KV Cache 与权重容量分布。</p>
           </div>
         </GlowCard>
 
         <div>
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-space-300"><Database size={13} className="text-emerald-400" />公开参考配置</div>
-            <span className="text-[10px] text-space-600">点击后按公开结构与参数量计算</span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-space-300"><Database size={13} className="text-emerald-400" />参考配置</div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {REFERENCE_CONFIGS.map(cfg => {
@@ -168,13 +171,20 @@ export default function KVCachePanel({ params, setParams, calcResult, modelWeigh
           </div>
           <div className="mt-4 space-y-2">
             <MetricCard label="KV Cache" value={kvGiB} unit="GiB" accent="emerald" tip="按当前架构、层数、序列长度、批次和容量精度计算" />
-            <MetricCard label="权重理论载荷" value={modelWeight} unit="GiB" accent="cyan" tip={usingReference ? '按公开参数量 × 每元素字节数计算' : '按 Dense Attention + Dense FFN + Embedding 的结构假设估算，不代表任意模型真实参数量'} />
-            <MetricCard label="容量下界合计" value={totalGiB} unit="GiB" accent={totalTarget > params.gpuMemory ? 'rose' : 'violet'} tip="权重理论载荷 + KV Cache；不含运行时临时张量和框架开销" />
-            <MetricCard label="Head 维度" value={calcResult.headDim} unit="" accent="slate" tip="hidden_size / num_heads；当前输入需能整除才对应常见模型配置" />
+            <MetricCard label="权重容量" value={modelWeight} unit="GiB" accent="cyan" tip={usingReference ? '参数量 × 每元素字节数' : '按当前结构参数计算'} />
+            <MetricCard label="容量合计" value={totalGiB} unit="GiB" accent={totalTarget > params.gpuMemory ? 'rose' : 'violet'} tip="权重容量 + KV Cache" />
+            <MetricCard
+              label={calcResult.isLatent ? 'MLA Q/K Head 维度' : 'Head 维度'}
+              value={calcResult.attentionHeadDim}
+              unit=""
+              accent="slate"
+              digits={0}
+              tip={calcResult.isLatent ? 'qk_nope_head_dim + qk_rope_head_dim；不使用 hidden_size / num_heads 代替 MLA 的公开配置' : 'hidden_size / num_heads；当前输入需能整除才对应常见模型配置'}
+            />
           </div>
           <div className="mt-3 rounded-xl border border-space-700/50 bg-space-950/40 px-3 py-2.5 text-[10px] leading-relaxed text-space-500">
-            <div>架构：{ARCHITECTURES[params.architecture].name} · {calcResult.isLatent ? `${calcResult.latentWidth} 维潜变量/层/Token` : `${calcResult.effectiveKVHeads} 个 K/V 头`}</div>
-            <div className="mt-1">权重口径：{usingReference ? `${params.referenceName} 公开参数量` : '结构假设下的示意估算'}</div>
+            <div>架构：{ARCHITECTURES[params.architecture].name} · {calcResult.isLatent ? `${calcResult.latentWidth} 维持久缓存/层/Token（${params.kvLatentDim}+${params.ropeHeadDim}）` : `${calcResult.effectiveKVHeads} 个 K/V 头`}</div>
+            <div className="mt-1">权重参数：{usingReference ? `${params.referenceName} 公开参数量` : '按当前结构估算'}</div>
           </div>
         </GlowCard>
 
@@ -188,7 +198,7 @@ export default function KVCachePanel({ params, setParams, calcResult, modelWeigh
           <h4 className="text-xs font-semibold text-space-300">公式与范围</h4>
           <div className="mt-3 space-y-2 text-[11px] leading-relaxed text-space-500">
             <div className="formula-chip font-mono">{formula}</div>
-            <div>GiB 按 2³⁰ 字节换算。结果不包含激活值、CUDA Context、内存碎片、通信缓冲区和推理框架预留。</div>
+            <div>GiB 按 2³⁰ 字节换算；不计激活值、CUDA Context、内存碎片、通信缓冲区和框架预留。</div>
           </div>
         </GlowCard>
       </div>

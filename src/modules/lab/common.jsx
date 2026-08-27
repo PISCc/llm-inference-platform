@@ -15,7 +15,7 @@ export const ARCHITECTURES = {
     desc: 'Query 头与 K/V 头数量相同。',
     kvMode: 'heads',
     defaultKVRatio: 1,
-    color: '#22d3ee',
+    color: '#46728a',
     evidence: 'KV 容量由 K/V 头数直接计算。',
   },
   GQA: {
@@ -24,7 +24,7 @@ export const ARCHITECTURES = {
     desc: '多组 Query 头共享较少的 K/V 头；具体组数由模型配置决定。',
     kvMode: 'heads',
     defaultKVRatio: 0.25,
-    color: '#a78bfa',
+    color: '#7a5f8d',
     evidence: '工作台默认用 Q 头数的 1/4 作为可调整示例。',
   },
   MQA: {
@@ -33,7 +33,7 @@ export const ARCHITECTURES = {
     desc: '所有 Query 头共享一组 K/V 头。',
     kvMode: 'heads',
     defaultKVRatio: null,
-    color: '#fbbf24',
+    color: '#a26c2b',
     evidence: '按 1 个 K/V 头计算。',
   },
   MLA: {
@@ -42,7 +42,7 @@ export const ARCHITECTURES = {
     desc: '缓存低秩潜变量与解耦 RoPE 分量，容量取决于模型公开的潜变量维度。',
     kvMode: 'latent',
     defaultKVRatio: null,
-    color: '#34d399',
+    color: '#5c7f65',
     evidence: '默认维度采用 DeepSeek-V2 配置：kv_lora_rank=512、qk_rope_head_dim=64。',
   },
 };
@@ -56,7 +56,7 @@ export const ATTENTION_KERNELS = {
   },
   flash: {
     name: 'FlashAttention',
-    desc: '通过分块和在线 Softmax 减少 HBM 读写与中间矩阵存储，同时保持精确 Attention 结果。',
+    desc: '通过分块和在线 Softmax 减少 HBM 读写与中间矩阵存储；它实现数学上的精确 Attention，不采用稀疏近似，但浮点运算顺序不同可能产生微小舍入差异。',
     persistentKVEffect: '不改变',
     workingMemory: '通常更低，实际幅度依赖实现与形状',
   },
@@ -72,18 +72,19 @@ export const REFERENCE_CONFIGS = [
   {
     name: 'Llama 3 8B', hiddenSize: 4096, numLayers: 32, numHeads: 32, numKVHeads: 8,
     seqLen: 8192, batchSize: 1, precision: 'fp16', architecture: 'GQA', parameterCountB: 8,
-    source: 'Meta Llama 3 官方模型卡与公开配置',
-    scenarioNote: '按 8,192 Token 场景计算',
+    source: 'Meta Llama 3 官方模型卡与模型配置',
+    scenarioNote: '按官方 8B 档位与 8,192 Token 上下文上限计算；参数量为档位标称值',
   },
   {
     name: 'Llama 3 70B', hiddenSize: 8192, numLayers: 80, numHeads: 64, numKVHeads: 8,
     seqLen: 8192, batchSize: 1, precision: 'fp16', architecture: 'GQA', parameterCountB: 70,
-    source: 'Meta Llama 3 官方模型卡与公开配置',
-    scenarioNote: '按 8,192 Token 场景计算',
+    source: 'Meta Llama 3 官方模型卡与模型配置',
+    scenarioNote: '按官方 70B 档位与 8,192 Token 上下文上限计算；参数量为档位标称值',
   },
   {
     name: 'DeepSeek-V2', hiddenSize: 5120, numLayers: 60, numHeads: 128, numKVHeads: 1,
-    kvLatentDim: 512, ropeHeadDim: 64, seqLen: 128000, batchSize: 1, precision: 'fp16',
+    kvLatentDim: 512, qkNopeHeadDim: 128, ropeHeadDim: 64, valueHeadDim: 128,
+    seqLen: 128000, batchSize: 1, precision: 'fp16',
     architecture: 'MLA', parameterCountB: 236, source: 'DeepSeek-V2 官方论文、仓库与公开配置',
     scenarioNote: '按 128,000 Token 场景计算；公开配置的 max_position_embeddings 为 163,840',
   },
@@ -96,9 +97,19 @@ export function getArchitectureKVHeads(architecture, numHeads) {
   return numHeads;
 }
 
+// GQA 的 K/V 头数统一从这里解析：优先保留当前模型的权威参考头数（gqaKVHeads，
+// 如 Llama 3 70B 官方 8 头），没有参考时按 Q 头数的 1/4 推导。该值不随架构切换
+// 被覆盖，保证对比图切换选中项时只高亮、不跳变。
+export function resolveKVHeads(architecture, numHeads, gqaKVHeads) {
+  if (architecture === 'MLA') return null;
+  if (architecture === 'MQA') return 1;
+  if (architecture === 'GQA') return gqaKVHeads ?? getArchitectureKVHeads('GQA', numHeads);
+  return numHeads;
+}
+
 export function calcKVCache({
   hiddenSize, numLayers, numHeads, numKVHeads, seqLen, batchSize, precision,
-  architecture = 'MHA', kvLatentDim = 512, ropeHeadDim = 64,
+  architecture = 'MHA', kvLatentDim = 512, qkNopeHeadDim = 128, ropeHeadDim = 64, valueHeadDim = 128,
 }) {
   const headDim = hiddenSize / numHeads;
   const bytes = PRECISIONS[precision]?.bytes || 2;
@@ -124,12 +135,14 @@ export function calcKVCache({
     kvMemoryRatio: mhaBytes > 0 ? kvCacheBytes / mhaBytes : 0,
     isLatent: arch.kvMode === 'latent',
     latentWidth: arch.kvMode === 'latent' ? kvLatentDim + ropeHeadDim : null,
+    attentionHeadDim: arch.kvMode === 'latent' ? qkNopeHeadDim + ropeHeadDim : headDim,
+    valueHeadDim: arch.kvMode === 'latent' ? valueHeadDim : headDim,
   };
 }
 
 export function calcModelWeight({
   hiddenSize, numLayers, numHeads, numKVHeads, precision, architecture = 'MHA',
-  parameterCountB, vocabSize = 128000, intermediateSize,
+  parameterCountB, vocabSize = 128000, intermediateSize, kvLatentDim = 512,
 }) {
   const bytes = PRECISIONS[precision]?.bytes || 2;
   if (parameterCountB) return parameterCountB * 1e9 * bytes / (1024 ** 3);
@@ -138,7 +151,9 @@ export function calcModelWeight({
   const effectiveKVHeads = getArchitectureKVHeads(architecture, numHeads) ?? numHeads;
   const ffnSize = intermediateSize || Math.round((hiddenSize * 3.5) / 256) * 256;
   const qProjection = hiddenSize * hiddenSize;
-  const kvProjections = 2 * hiddenSize * effectiveKVHeads * headDim;
+  const isLatent = ARCHITECTURES[architecture]?.kvMode === 'latent';
+  const kvProjectionDim = isLatent ? kvLatentDim : effectiveKVHeads * headDim;
+  const kvProjections = 2 * hiddenSize * kvProjectionDim;
   const outputProjection = hiddenSize * hiddenSize;
   const attentionParamsPerLayer = qProjection + kvProjections + outputProjection;
   const ffnParamsPerLayer = 3 * hiddenSize * ffnSize;
@@ -187,23 +202,25 @@ export function SliderControl({ label, value, min, max, step, onChange, unit, to
       </div>
       <input
         type="range"
+        aria-label={label}
         min={min}
         max={max}
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className={`h-1.5 w-full cursor-pointer appearance-none rounded-full bg-space-800 ${accentClass}`}
+        className={`h-1.5 w-full cursor-pointer appearance-none rounded-full bg-space-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-2 ${accentClass}`}
       />
       <div className="flex justify-between font-mono text-[9px] text-space-600"><span>{min}{unit}</span><span>{max}{unit}</span></div>
     </div>
   );
 }
 
-export function MetricCard({ label, value, unit, prevValue, accent = 'cyan', tip, digits = 2 }) {
+export function MetricCard({ label, value, unit, prevValue, accent = 'cyan', tip, digits = 2, lowerIsBetter = null }) {
   const diff = typeof value === 'number' && prevValue !== undefined && prevValue !== 0
     ? ((value - prevValue) / prevValue * 100).toFixed(1)
     : null;
-  const isBetter = diff !== null && ((label.includes('显存') || label.includes('容量')) ? diff < 0 : diff > 0);
+  const preferLower = lowerIsBetter ?? (label.includes('显存') || label.includes('容量'));
+  const isBetter = diff !== null && (preferLower ? diff < 0 : diff > 0);
   const colorClass = accent === 'emerald' ? 'text-emerald-400' : accent === 'rose' ? 'text-rose-400' : accent === 'violet' ? 'text-violet-400' : accent === 'amber' ? 'text-amber-400' : accent === 'slate' ? 'text-space-200' : 'text-cyan-400';
   return (
     <div className="rounded-xl border border-space-700/50 bg-gradient-to-br from-space-900/80 to-space-950/60 p-3.5 shadow-inner shadow-white/[0.015]">

@@ -1,0 +1,124 @@
+name: Production smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://llm-inference-platform-pisc2.vercel.app
+    steps:
+      - name: Wait for the production alias to update
+        run: sleep 30
+
+      - name: Frontend responds
+        run: |
+          node <<'NODE'
+          const response = await fetch(process.env.BASE_URL + '/');
+          const html = await response.text();
+          console.log({ status: response.status, bytes: html.length });
+          if (response.status !== 200 || !html.toLowerCase().includes('<!doctype html')) process.exit(1);
+          NODE
+
+      - name: Model configuration API responds
+        run: |
+          node <<'NODE'
+          const response = await fetch(process.env.BASE_URL + '/api/agent/config');
+          const body = await response.json();
+          console.log({ status: response.status, configured: body.config?.configured });
+          if (response.status !== 200 || typeof body.config?.configured !== 'boolean') process.exit(1);
+          NODE
+
+      - name: Offline knowledge fallback responds
+        run: |
+          node <<'NODE'
+          const response = await fetch(process.env.BASE_URL + '/api/agent/chat', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              query: '什么是 KV Cache？',
+              pageContext: { pageId: 'agent', pageTitle: 'AI 技术问答' },
+              conversation: [],
+            }),
+          });
+          const body = await response.json();
+          console.log({ status: response.status, mode: body.mode, answerChars: body.answer?.length });
+          if (response.status !== 200 || !body.answer) process.exit(1);
+          NODE
+
+      - name: PPT outline responds
+        run: |
+          node <<'NODE'
+          const outline = await fetch(process.env.BASE_URL + '/api/skills/ppt/outline', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              source: {
+                type: 'page',
+                label: 'KV Cache',
+                content: 'KV Cache 保存注意力键值状态，用于避免重复计算。',
+              },
+              preferences: { slideCount: 4, title: 'KV Cache 技术说明' },
+            }),
+          });
+          const outlineBody = await outline.json();
+          if (outline.status !== 200 || outlineBody.spec?.slides?.length !== 4) {
+            console.log({ outlineStatus: outline.status, outlineBody });
+            process.exit(1);
+          }
+          console.log({ outlineStatus: outline.status, slides: outlineBody.spec.slides.length });
+          NODE
+
+      - name: PPTX rendering responds
+        run: |
+          node <<'NODE'
+          const outline = await fetch(process.env.BASE_URL + '/api/skills/ppt/outline', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              source: {
+                type: 'page',
+                label: 'KV Cache',
+                content: 'KV Cache 保存注意力键值状态，用于避免重复计算。',
+              },
+              preferences: { slideCount: 4, title: 'KV Cache 技术说明' },
+            }),
+          });
+          const outlineBody = await outline.json();
+          const render = await fetch(process.env.BASE_URL + '/api/skills/ppt/render', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ spec: outlineBody.spec }),
+          });
+          const pptx = Buffer.from(await render.arrayBuffer());
+          console.log({ renderStatus: render.status, pptxBytes: pptx.length });
+          if (render.status !== 200 || pptx[0] !== 0x50 || pptx[1] !== 0x4b) {
+            const detail = pptx.toString('utf8').slice(0, 500).replace(/[\r\n]+/g, ' ');
+            console.log(`::error title=PPTX render ${render.status}::${detail}`);
+            process.exit(1);
+          }
+          NODE
+
+      - name: Private model endpoints are rejected
+        run: |
+          node <<'NODE'
+          const response = await fetch(process.env.BASE_URL + '/api/agent/config', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              provider: 'vllm-local',
+              baseUrl: 'http://127.0.0.1:8000/v1',
+              apiKey: 'not-a-real-key',
+              model: 'local-model',
+            }),
+          });
+          console.log({ status: response.status });
+          if (response.status !== 400) process.exit(1);
+          NODE

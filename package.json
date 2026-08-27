@@ -1,17 +1,25 @@
 {
   "name": "llm-inference-platform",
+  "description": "面向大模型推理系统的交互式技术工作台，集成技术全景图、推理流程动画、参数实验、方案对比、证据驱动诊断、上下文 AI 问答与 PPT 导出。",
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "vite",
+    "agent:dev": "node --env-file-if-exists=.env server/dev-agent.mjs",
+    "start": "node --env-file-if-exists=.env server/dev-agent.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "clsx": "^2.1.1",
     "framer-motion": "^13.1.0",
+    "geist": "^1.7.2",
     "lucide-react": "^1.31.0",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
@@ -24,5 +32,8 @@
     "tailwindcss": "^4.3.3",
     "vite": "^8.2.1",
     "vite-plugin-singlefile": "^2.3.3"
+  },
+  "overrides": {
+    "image-size": "npm:image-size-next@2.1.1"
   }
 }

@@ -1,35 +1,40 @@
-import { useNavigate } from 'react-router-dom';
+﻿import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play, RotateCcw, Zap, Database, Gauge,
   ChevronRight, Sparkles, AlertCircle, CheckCircle2, ArrowRight,
-  Type, Hash, BookOpen, Pause, SkipForward, Layers2
+  Type, Hash, BookOpen, Pause, SkipForward, Layers2, Map, PlayCircle
 } from 'lucide-react';
 import GlowCard from '../components/GlowCard.jsx';
 import Badge from '../components/Badge.jsx';
 import ProductHeader from '../components/ProductHeader.jsx';
 import knowledgeData from '../data/knowledge.json';
+import { usePageContextRegistration } from '../context/PageContext.jsx';
 
 const KNOWLEDGE_CASE_IDS = ['kv-cache', 'attention-机制', 'pagedattention', 'moe', 'speculative-decoding', 'flashattention'];
 const KNOWLEDGE_ENTRIES = knowledgeData.entries || [];
 
-function splitForAnimation(text) {
-  return text
-    .split(/([，。；：、（）()\s]|Attention|Token|KV Cache|PagedAttention|FlashAttention|Speculative Decoding|MoE)/)
-    .filter(Boolean)
-    .filter((part) => !/^\s+$/.test(part));
-}
+// 题目可以是技术问题，也可以是确定性更强的生活/常识问题。
+// 每个演示案例都显式提供答案，后续 Token 化、Prefill、Decode 使用同一份答案数据。
+const CASE_OVERRIDES = {
+  'kv-cache': { label: '3 + 6 = ？', question: '3 + 6 = ？', answer: '9。' },
+  'attention-机制': { label: '太阳从哪边升起？', question: '太阳从哪边升起？', answer: '太阳通常从东方升起。' },
+  pagedattention: { label: '一年有多少个月？', question: '一年有多少个月？', answer: '一年有 12 个月。' },
+};
 
 const CASES = KNOWLEDGE_CASE_IDS.map((id) => {
   const entry = KNOWLEDGE_ENTRIES.find((item) => item.id === id);
   if (!entry) return null;
+  const override = CASE_OVERRIDES[id] || {};
+  const answer = override.answer || entry.definition;
   return {
     id,
-    label: entry.title,
-    question: `什么是${entry.title}？`,
-    answer: entry.definition,
-    reply: splitForAnimation(entry.definition),
+    label: override.label || entry.title,
+    question: override.question || `什么是${entry.title}？`,
+    definition: entry.definition,
+    answer,
+    reply: tokenizeForDemo(answer),
   };
 }).filter(Boolean);
 const STAGES = [
@@ -52,6 +57,12 @@ function getDemoTokenId(token, index) {
   return 1000 + ((hash + index * 97) % 9000);
 }
 
+// 分词节奏按输入长度自适应：长问题不再线性拖长，整个分词阶段控制在约 3–4 秒。
+function tokenRevealDelay(tokenCount) {
+  const count = Math.max(1, tokenCount || 1);
+  return Math.min(450, Math.max(120, 2400 / count));
+}
+
 function tokenizeForDemo(text) {
   const segments = text.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*|\d+(?:\.\d+)?|[\u3400-\u9fff]|[^\s]/g);
   return segments?.length ? segments : [text];
@@ -69,30 +80,33 @@ function calcStructuralCounts(inputLen, outputLen, useCache, batchSize) {
     cachedVectors,
   };
 }
-function StageNode({ index, label, active, done, panoramaId, navigate }) {
-  const canClick = !!panoramaId;
+function StageNode({ index, label, active, done, stageKey, menuOpen, onOpenMenu }) {
   return (
-    <div className="flex flex-1 flex-col items-center gap-1.5">
-      <button onClick={() => canClick && navigate('/panorama', { state: { moduleId: panoramaId } })} disabled={!canClick}
-        className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold transition-all duration-300 ${active ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.25)]' : done ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-space-700 bg-space-800/60 text-space-500'} ${canClick ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}
-        title={canClick ? `点击查看全景图：${label}` : label}>
+    <div className="pipeline-stage-node flex flex-1 flex-col items-center gap-1.5">
+      <button type="button" onClick={() => onOpenMenu(stageKey)} aria-current={active ? 'step' : undefined} aria-haspopup="menu" aria-expanded={menuOpen}
+        className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold transition-all duration-300 ${active ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.25)]' : done ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-space-700 bg-space-800/60 text-space-500'} cursor-pointer hover:scale-110 ${menuOpen ? 'ring-2 ring-cyan-300/30' : ''}`}
+        title={`打开${label}阶段操作`}>
         {done ? <CheckCircle2 size={14} /> : index + 1}
       </button>
-      <button onClick={() => canClick && navigate('/panorama', { state: { moduleId: panoramaId } })} disabled={!canClick}
-        className={`text-xs font-medium transition-colors ${active ? 'text-cyan-300' : done ? 'text-emerald-300/80' : 'text-space-600'} ${canClick ? 'cursor-pointer hover:text-cyan-300' : 'cursor-default'}`}>
+      <button type="button" onClick={() => onOpenMenu(stageKey)} aria-current={active ? 'step' : undefined} aria-haspopup="menu" aria-expanded={menuOpen}
+        className={`text-xs font-medium transition-colors ${active ? 'text-cyan-300' : done ? 'text-emerald-300/80' : 'text-space-600'} cursor-pointer hover:text-cyan-300`}>
         {label}
       </button>
     </div>
   );
 }
 
-function TokenizingView({ tokens }) {
+function TokenizingView({ tokens, isPlaying }) {
   const [visibleCount, setVisibleCount] = useState(0);
-  useEffect(() => { if (visibleCount < tokens.length) { const t = setTimeout(() => setVisibleCount(c=>c+1), 450); return () => clearTimeout(t); } }, [visibleCount, tokens.length]);
+  useEffect(() => {
+    if (!isPlaying || visibleCount >= tokens.length) return;
+    const t = setTimeout(() => setVisibleCount(c => c + 1), tokenRevealDelay(tokens.length));
+    return () => clearTimeout(t);
+  }, [isPlaying, visibleCount, tokens.length]);
   useEffect(() => { setVisibleCount(0); }, [tokens]);
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 px-2">
-      <div className="text-center"><Badge variant="cyan">分词中</Badge><p className="mt-2 text-xs text-space-500">按字符与术语拆分输入文本，依次展示 Token 与 TokenID 的形成过程</p></div>
+      <div className="text-center"><Badge variant="cyan">分词中</Badge><p className="mt-2 text-xs text-space-500">用演示分词规则拆分输入，展示 Token 与稳定的教学用 Token ID；真实模型会使用各自的词表</p></div>
       <div className="w-full max-w-lg space-y-2">
         {tokens.map((tok,i) => {
           const isVisible = i < visibleCount;
@@ -113,7 +127,7 @@ function TokenizingView({ tokens }) {
       </div>
       {visibleCount >= tokens.length && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs text-emerald-300">
-          当前输入被拆分为 {tokens.length} 个 Token；不同模型的 Tokenizer 可能得到不同结果。
+          当前输入被拆分为 {tokens.length} 个 Token；这里的 Token ID 是稳定的教学编号，真实模型会按自身 Tokenizer 和词表编码。
         </motion.div>
       )}
     </div>
@@ -201,7 +215,7 @@ function usePlaybackSteps(length, ms, playing) {
 // ========== 子镜头1: Embedding 教学矩阵 ==========
 function EmbeddingShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
-  const step = usePlaybackSteps(data.input.length * 3 + 1, 380, playing);
+  const step = usePlaybackSteps(data.input.length * 3 + 1, 210, playing);
   
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6">
@@ -239,7 +253,7 @@ function EmbeddingShot({ tokens, playing }) {
           );
         })}
       </div>
-      <p className="text-center text-[11px] leading-relaxed text-space-500">此处使用小型确定性向量展示数据流；真实模型可能使用 RoPE 等位置机制。</p>
+      <p className="text-center text-[11px] leading-relaxed text-space-500">小型向量用于展示数据流。</p>
       {step >= data.input.length * 3 && (
         <div className="text-sm font-semibold text-emerald-400">✓ 全部 Token 完成嵌入</div>
       )}
@@ -252,7 +266,7 @@ function QKVShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
   const n = data.input.length;
   const d = 4;
-  const step = usePlaybackSteps(n * 3 + 2, 350, playing);
+  const step = usePlaybackSteps(n * 3 + 2, 200, playing);
   
   const showQ = (idx) => step >= idx * 3 + 1;
   const showK = (idx) => step >= idx * 3 + 2;
@@ -335,7 +349,7 @@ function QKVShot({ tokens, playing }) {
 // ========== 子镜头3: Attention 演示矩阵结果 ==========
 function AttentionShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
-  const step = usePlaybackSteps(data.attn.length * data.attn.length + data.attn.length + 1, 230, playing);
+  const step = usePlaybackSteps(data.attn.length * data.attn.length + data.attn.length + 1, 130, playing);
   const n = data.attn.length;
   const finiteScores = data.scores.flat().filter(Number.isFinite);
   const minScore = Math.min(...finiteScores);
@@ -442,7 +456,7 @@ function ResidualFFNShot({ tokens, playing }) {
   const data = useMemo(() => generateRealData(tokens), [tokens]);
   const n = data.input.length;
   const steps = ['残差路径', '归一化', '前馈升维', '非线性/门控', '投影回 d', '残差合并'];
-  const step = usePlaybackSteps(steps.length + 1, 700, playing);
+  const step = usePlaybackSteps(steps.length + 1, 400, playing);
   const showStep = (i) => step >= i + 1;
   const allDone = step >= steps.length;
   
@@ -490,7 +504,7 @@ function ResidualFFNShot({ tokens, playing }) {
         ))}
       </div>
       
-      <p className="max-w-3xl text-center text-[11px] leading-relaxed text-space-500">这是简化 Transformer 层示意；实际模型可能采用 RMSNorm、SwiGLU，以及不同的 Pre-Norm 或 Post-Norm 顺序。</p>
+      <p className="max-w-3xl text-center text-[11px] leading-relaxed text-space-500">简化 Transformer 层示意。</p>
       <div className={`flex items-center gap-3 text-sm transition-all duration-500 ${allDone ? 'opacity-100' : 'opacity-30'}`}>
         <span className="rounded-md border border-space-700 bg-space-800/50 px-3 py-1.5">Attention 输出 + 原始输入</span>
         <span className="text-space-600">→</span>
@@ -510,7 +524,7 @@ const PrefillView = forwardRef(function PrefillView({ tokens, isPlaying, onCompl
     const t = setTimeout(() => {
       if (shot < PREfill_SHOTS.length - 1) setShot((s) => s + 1);
       else onComplete();
-    }, 5000);
+    }, 3000);
     return () => clearTimeout(t);
   }, [shot, isPlaying, onComplete]);
 
@@ -536,18 +550,18 @@ const PrefillView = forwardRef(function PrefillView({ tokens, isPlaying, onCompl
           <button key={s.key} onClick={() => setShot(i)} title={s.label}
             className={`h-2 w-7 rounded-full transition-all ${i === shot ? 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]' : i < shot ? 'bg-emerald-500/60' : 'bg-space-700'}`} />
         ))}
-        <span className="ml-2 text-xs text-space-500">每镜头 5 秒 · 总 20 秒</span>
+        <span className="ml-2 text-xs text-space-500">每镜头约 3 秒 · 总约 12 秒</span>
       </div>
 
-      <div className="grid flex-1 gap-4 lg:grid-cols-[100px_1fr]">
-        <div className="flex flex-row gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+      <div className="pipeline-prefill-layout grid flex-1 gap-4 lg:grid-cols-[170px_minmax(0,1fr)]">
+        <div className="pipeline-prefill-nav flex flex-row gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
           {PREfill_SHOTS.map((s, i) => (
             <button key={s.key} onClick={() => setShot(i)}
-              className={`flex min-w-max items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-all ${i === shot ? 'border-violet-500/40 bg-violet-500/10' : 'border-space-700/50 bg-space-800/40 hover:border-space-600'}`}>
+              className={`pipeline-prefill-step flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-all ${i === shot ? 'border-violet-500/40 bg-violet-500/10' : 'border-space-700/50 bg-space-800/40 hover:border-space-600'}`}>
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${i === shot ? 'bg-violet-500/25 text-violet-300' : i < shot ? 'bg-emerald-500/20 text-emerald-300' : 'bg-space-800 text-space-600'}`}>
                 {i < shot ? <CheckCircle2 size={13} /> : i + 1}
               </span>
-              <span className={`text-sm font-medium ${i === shot ? 'text-violet-300' : 'text-space-400'}`}>{s.label}</span>
+              <span className={`pipeline-prefill-step-label min-w-0 flex-1 text-sm font-medium ${i === shot ? 'text-violet-300' : 'text-space-400'}`}>{s.label}</span>
             </button>
           ))}
         </div>
@@ -618,7 +632,8 @@ export default function Pipeline() {
   const [revealedCount, setRevealedCount] = useState(0);
   const [stats, setStats] = useState(null);
   const [altStats, setAltStats] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [stageMenuKey, setStageMenuKey] = useState(null);
   const prefillRef = useRef(null);
   const stageIndex = STAGES.findIndex((s) => s.key === stage);
 
@@ -628,6 +643,7 @@ export default function Pipeline() {
 
   const handleStart = useCallback(() => {
     if (!selectedCase) return;
+    setStageMenuKey(null);
     setTokens(tokenizeForDemo(selectedCase.question));
     setOutputTokens([]);
     setRevealedCount(0);
@@ -640,7 +656,7 @@ export default function Pipeline() {
 
   useEffect(() => {
     if (stage !== 'tokenizing' || !isPlaying) return;
-    const t = setTimeout(() => setStage('prefill'), tokens.length * 500 + 800);
+    const t = setTimeout(() => setStage('prefill'), Math.round(tokens.length * tokenRevealDelay(tokens.length)) + 800);
     return () => clearTimeout(t);
   }, [stage, tokens, isPlaying]);
 
@@ -674,8 +690,50 @@ export default function Pipeline() {
 
   const handleReset = useCallback(() => {
     setStage('idle'); setSelectedCase(null); setTokens([]); setOutputTokens([]); setUseCache(null);
-    setRevealedCount(0); setStats(null); setAltStats(null); setIsPlaying(true);
+    setRevealedCount(0); setStats(null); setAltStats(null); setIsPlaying(false); setStageMenuKey(null);
   }, []);
+
+  const handleJumpToStage = useCallback((targetKey) => {
+    const target = STAGES.find((item) => item.key === targetKey);
+    if (!target) return;
+    setIsPlaying(false);
+    if (targetKey === 'idle') {
+      setStage('idle');
+      return;
+    }
+    if (!selectedCase) return;
+    const nextTokens = tokens.length ? tokens : tokenizeForDemo(selectedCase.question);
+    const nextOutput = outputTokens.length ? outputTokens : [...selectedCase.reply];
+    setTokens(nextTokens);
+    if (targetKey === 'tokenizing' || targetKey === 'prefill') {
+      setOutputTokens([]);
+      setRevealedCount(0);
+      setUseCache(null);
+      setStats(null);
+      setAltStats(null);
+    } else if (targetKey === 'branch') {
+      setOutputTokens([]);
+      setRevealedCount(0);
+      setUseCache(null);
+      setStats(null);
+      setAltStats(null);
+    } else if (targetKey === 'decoding') {
+      const selectedCache = useCache ?? true;
+      setOutputTokens(nextOutput);
+      setRevealedCount(0);
+      setUseCache(selectedCache);
+      setStats(null);
+      setAltStats(null);
+    } else if (targetKey === 'finished') {
+      const selectedCache = useCache ?? true;
+      setOutputTokens(nextOutput);
+      setRevealedCount(nextOutput.length);
+      setUseCache(selectedCache);
+      setStats(calcStructuralCounts(nextTokens.length, nextOutput.length, selectedCache, batchSize));
+      setAltStats(calcStructuralCounts(nextTokens.length, nextOutput.length, !selectedCache, batchSize));
+    }
+    setStage(targetKey);
+  }, [batchSize, outputTokens, selectedCase, tokens, useCache]);
 
   const handleNext = useCallback(() => {
     if (stage === 'tokenizing') setStage('prefill');
@@ -689,151 +747,133 @@ export default function Pipeline() {
     }
   }, [stage, revealedCount, outputTokens.length]);
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && stage !== 'idle' && stage !== 'finished') {
+        event.preventDefault();
+        setIsPlaying(false);
+      }
+      if (event.key === 'ArrowRight' && stage !== 'idle' && stage !== 'finished') {
+        event.preventDefault();
+        setIsPlaying(false);
+        handleNext();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleNext, stage]);
+
   const isRunning = stage !== 'idle' && stage !== 'finished';
+  const activeStage = STAGES[stageIndex] || STAGES[0];
+  const selectedStageAction = STAGES.find((item) => item.key === stageMenuKey);
+  const pageContext = useMemo(() => ({
+    pageId: 'pipeline',
+    pageTitle: '推理流水线模拟器',
+    pageType: 'simulation',
+    activeSection: stage,
+    selection: {
+      caseId: selectedCase?.id || null,
+      caseLabel: selectedCase?.label || null,
+      question: selectedCase?.question || null,
+      caseDefinition: selectedCase?.definition || null,
+      caseAnswer: selectedCase?.answer || null,
+      stageLabel: activeStage.label,
+      stageDescription: activeStage.desc,
+      panoramaModuleId: activeStage.panoramaId,
+      cacheBranch: useCache == null ? 'not-selected' : useCache ? 'with-kv-cache' : 'without-kv-cache',
+    },
+    parameters: {
+      batchSize,
+      isPlaying,
+      stageIndex,
+      stageCount: STAGES.length,
+      inputTokenCount: tokens.length,
+      plannedOutputTokenCount: outputTokens.length,
+      revealedOutputTokenCount: revealedCount,
+    },
+    result: {
+      tokens: tokens.map((token, index) => ({ token, tokenId: getDemoTokenId(token, index) })),
+      revealedOutput: outputTokens.slice(0, revealedCount),
+      structuralStats: stats,
+      comparisonStats: altStats,
+    },
+    visibleSummary: selectedCase
+      ? `案例“${selectedCase.label}”当前处于${activeStage.label}阶段：${activeStage.desc}。`
+      : '尚未选择演示案例，当前处于输入准备阶段。',
+    suggestedQuestions: [
+      '为什么 AI 答一句话要想那么久？',
+      '为什么 AI 出字时快时慢？',
+      '为什么 AI 会越聊越慢？',
+    ],
+    boundaries: [],
+  }), [activeStage, altStats, batchSize, isPlaying, outputTokens, revealedCount, selectedCase, stage, stageIndex, stats, tokens, useCache]);
+
+  usePageContextRegistration('pipeline-page', pageContext);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <ProductHeader
-        title="推理流水线模拟器"
-        subtitle="从文本分词开始，逐步观察 Prefill、KV Cache 分支与 Decode，理解一次大模型推理请求的完整执行过程。"
-        accent="cyan"
-        badges={[{ label: '6 个精选案例' }, { label: '可暂停与逐步推进' }]}
-      />
-      {/* Stage Bar */}
-      <div className="panel-shell rounded-xl border border-space-700/50 bg-space-900/50 p-4 backdrop-blur-md">
-        <div className="overflow-x-auto pb-1">
-          <div className="flex min-w-[620px] items-center justify-between gap-2">
-            {STAGES.map((s,i) => <StageNode key={s.key} index={i} label={s.label} active={i===stageIndex} done={i<stageIndex} panoramaId={s.panoramaId} navigate={navigate} />)}
-          </div>
-        </div>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-space-800">
-          <motion.div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500" animate={{ width: `${(stageIndex / (STAGES.length - 1)) * 100}%` }} transition={{ type: 'spring', stiffness: 120, damping: 18 }} />
-        </div>
-        <p className="mt-2 text-center text-xs text-space-500">{STAGES[stageIndex]?.desc}</p>
-        <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-cyan-400/80">
-          <span className="inline-block h-1 w-1 rounded-full bg-cyan-400/60 animate-pulse" />
-          提示：点击上方「分词」「Prefill」「KV Cache」「Decode」节点可跳转全景图查看对应模块
-        </div>
-
-        {/* 全局播放控制 */}
-        {isRunning && (
-          <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mt-3 flex items-center justify-center gap-2">
-            <button onClick={() => setIsPlaying(!isPlaying)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${isPlaying ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-[0_0_16px_rgba(251,191,36,0.2)]' : 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 shadow-[0_0_16px_rgba(34,211,238,0.2)]'}`}>
-              {isPlaying ? <><Pause size={16} /> 暂停</> : <><Play size={16} /> 继续</>}
-            </button>
-            <button onClick={handleNext}
-              className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold bg-violet-500/15 text-violet-300 border border-violet-500/40 shadow-[0_0_16px_rgba(167,139,250,0.2)] transition-all hover:bg-violet-500/25">
-              <SkipForward size={16} /> 下一步
-            </button>
-            <span className="text-xs text-space-500 ml-1">{isPlaying ? '自动推进中' : '已暂停'}</span>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Main Content */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <GlowCard accent="cyan" className="panel-shell min-h-[460px] p-5">
-          <AnimatePresence mode="wait">
-            {stage === 'idle' && (
-              <motion.div key="idle" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-5">
-                <div><h3 className="text-sm font-semibold text-space-200 mb-1">选择问题</h3><p className="text-xs text-space-500">选择一个技术问题，观察它从输入到生成答案的完整过程</p></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {CASES.map((c) => {
-                    const isSelected = selectedCase?.id === c.id;
-                    return (
-                      <GlowCard key={c.id} accent={isSelected ? 'cyan' : 'slate'} interactive onClick={() => handleSelectCase(c)} className={`module-card p-3.5 ${isSelected ? 'ring-1 ring-cyan-400/40' : ''}`}>
-                        <div className="flex items-center gap-2 mb-2"><BookOpen size={14} className={isSelected ? 'text-cyan-400' : 'text-space-500'} /><span className={`text-sm font-semibold ${isSelected ? 'text-cyan-300' : 'text-space-300'}`}>{c.label}</span></div>
-                        <p className="line-clamp-2 text-xs leading-relaxed text-space-500">{c.question}</p>
-                      </GlowCard>
-                    );
-                  })}
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-space-200 mb-2">Batch 模式</h3>
-                  <div className="flex gap-2">
-                    {BATCH_CONFIG.map((b) => {
-                      const isActive = batchSize === b.key;
-                      return (
-                        <button key={b.key} onClick={() => setBatchSize(b.key)}
-                          className={`flex flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all ${isActive ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-space-700/50 bg-space-800/40 text-space-400 hover:text-space-300'}`}>
-                          <Layers2 size={16} />
-                          <div><div className="text-xs font-semibold">{b.label}</div><div className="text-[10px] text-space-500">{b.desc}</div></div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                {selectedCase && (
-                  <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-space-700/50 bg-space-950/40 p-3">
-                    <span className="text-[11px] text-space-500 uppercase tracking-wider">已选问题</span>
-                    <p className="mt-1 text-sm text-space-200">{selectedCase.question}</p>
-                    {batchSize > 1 && <p className="mt-1 text-[11px] text-cyan-400">Batch 模式：复制该请求以展示批处理资源规模，不代表生成多个不同答案。</p>}
-                  </motion.div>
-                )}
-                <button onClick={handleStart} disabled={!selectedCase} className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(34,211,238,0.25)] transition-all hover:shadow-[0_0_30px_rgba(34,211,238,0.4)] disabled:opacity-40 disabled:shadow-none">
-                  <Play size={16} /> 开始推理
-                </button>
-              </motion.div>
-            )}
-            {stage === 'tokenizing' && <TokenizingView tokens={tokens} />}
-            {stage === 'prefill' && <PrefillView ref={prefillRef} tokens={tokens} isPlaying={isPlaying} onComplete={handlePrefillComplete} />}
-            {stage === 'branch' && (
-              <motion.div key="branch" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex h-full flex-col items-center justify-center gap-5">
-                <div className="text-center space-y-2"><Badge variant="amber">决策点</Badge><h3 className="text-base font-semibold text-space-200">是否启用 KV Cache？</h3><p className="text-xs text-space-500">KV Cache 复用历史 Token 的 K/V 表示，减少对历史部分的重复计算，但会增加持久缓存容量。</p></div>
-                <div className="grid w-full max-w-md gap-3 sm:grid-cols-2">
-                  <GlowCard accent="emerald" interactive onClick={() => handleBranch(true)} className="flex flex-col items-center gap-2 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"><Zap size={18} /></div>
-                    <span className="text-sm font-semibold text-space-200">启用 KV Cache</span><span className="text-xs text-space-500">复用历史 K/V，增加缓存容量</span>
-                  </GlowCard>
-                  <GlowCard accent="rose" interactive onClick={() => handleBranch(false)} className="flex flex-col items-center gap-2 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-400"><AlertCircle size={18} /></div>
-                    <span className="text-sm font-semibold text-space-200">禁用 KV Cache</span><span className="text-xs text-space-500">重算历史状态，不保留持久 K/V</span>
-                  </GlowCard>
-                </div>
-              </motion.div>
-            )}
-            {(stage === 'decoding' || stage === 'finished') && (
-              <DecodeView key="decode" tokens={tokens} outputTokens={outputTokens} revealedCount={revealedCount} useCache={useCache} stage={stage} />
-            )}
-          </AnimatePresence>
-        </GlowCard>
-        <div className="space-y-4">
-          {(stage === 'decoding' || stage === 'finished') && stats && (
-            <div className="space-y-3">
-              <GlowCard accent={useCache ? 'emerald' : 'rose'} className="panel-shell p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div><h3 className="flex items-center gap-2 text-sm font-semibold text-space-200"><Gauge size={16} className={useCache ? 'text-emerald-400' : 'text-rose-400'} />结构计数</h3><p className="mt-1 text-[10px] text-space-600">不是硬件实测性能</p></div>
-                  <Badge variant={useCache ? 'emerald' : 'slate'}>{useCache ? '复用历史 K/V' : '重算历史状态'}</Badge>
-                </div>
-                <div className="mt-3 space-y-2.5">
-                  <StatRow icon={Layers2} label="Prefill 输入片段" value={`${stats.prefillTokens}`} />
-                  <StatRow icon={ChevronRight} label="Decode 生成步数" value={`${stats.decodeSteps}`} />
-                  <StatRow icon={Gauge} label="相对历史处理量" value={`${stats.relativeDecodeWork}`} />
-                  <StatRow icon={Database} label="缓存 K/V 向量组" value={`${stats.cachedVectors}`} />
-                </div>
-              </GlowCard>
-              {altStats && stage === 'finished' && (
-                <GlowCard accent="slate" className="panel-shell p-4">
-                  <h3 className="text-xs font-semibold text-space-300">同一序列的结构对照</h3>
-                  <div className="mt-3 space-y-2">
-                    <div className="flex justify-between text-xs"><span className="text-space-500">当前历史处理量</span><span className="font-mono text-space-300">{stats.relativeDecodeWork}</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-space-500">另一分支处理量</span><span className="font-mono text-space-300">{altStats.relativeDecodeWork}</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-space-500">当前缓存向量组</span><span className="font-mono text-space-300">{stats.cachedVectors}</span></div>
-                  </div>
-                  <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/8 p-2.5 text-[11px] leading-relaxed text-amber-200">
-                    本页只展示结构计数；两条分支采用相同动画节奏，不转换为毫秒、吞吐或显存。真实性能需在指定模型、Tokenizer、硬件和推理引擎上测量。
-                  </div>
-                </GlowCard>
-              )}
+    <div className="pipeline-workbench wb-page">
+      <ProductHeader title="推理流水线模拟器" subtitle="从文本分词开始，逐步观察 Prefill、KV Cache 分支与 Decode，理解一次大模型推理请求的完整执行过程。" accent="cyan" badges={[{ label: '6 个精选案例' }, { label: '可暂停与逐步推进' }]} />
+      <section className="pipeline-stagebar panel-shell">
+        <div className="pipeline-stagebar-scroll"><div className="pipeline-stagebar-track">{STAGES.map((s, i) => <StageNode key={s.key} index={i} label={s.label} stageKey={s.key} active={i === stageIndex} done={i < stageIndex} menuOpen={stageMenuKey === s.key} onOpenMenu={(key) => setStageMenuKey((current) => current === key ? null : key)} />)}</div></div>
+        <div className="pipeline-progress"><motion.div animate={{ width: `${(stageIndex / (STAGES.length - 1)) * 100}%` }} /></div>
+        <div className="pipeline-stage-caption"><span>{STAGES[stageIndex]?.desc}</span><span className="pipeline-stage-hint">点击阶段节点选择跳转方式</span></div>
+        {selectedStageAction && <div className="pipeline-stage-actions" role="menu" aria-label={`${selectedStageAction.label}阶段操作`}><div className="pipeline-stage-actions-head"><span>阶段操作</span><strong>{selectedStageAction.label}</strong><button onClick={() => setStageMenuKey(null)} aria-label="关闭阶段操作">×</button></div><div className="pipeline-stage-actions-grid"><button className="pipeline-stage-action" onClick={() => { if (selectedStageAction.panoramaId) { navigate('/panorama', { state: { moduleId: selectedStageAction.panoramaId } }); setStageMenuKey(null); } }} disabled={!selectedStageAction.panoramaId}><Map size={16} /><span><b>跳转全景图知识点</b><small>{selectedStageAction.panoramaId ? '打开对应模块详情' : '该阶段暂无单一知识点'}</small></span><ArrowRight size={14} /></button><button className="pipeline-stage-action is-primary" onClick={() => { handleJumpToStage(selectedStageAction.key); setStageMenuKey(null); }} disabled={!selectedCase && selectedStageAction.key !== 'idle'}><PlayCircle size={16} /><span><b>动画跳转到对应节点</b><small>{selectedCase ? '定位到该阶段并保持暂停' : '请先选择一个案例'}</small></span><ArrowRight size={14} /></button></div></div>}
+        {isRunning && <div className="pipeline-playbar"><button className={isPlaying ? 'pipeline-control is-pause' : 'pipeline-control'} onClick={() => setIsPlaying(!isPlaying)}>{isPlaying ? <><Pause size={15} />暂停</> : <><Play size={15} />继续</>}</button><button className="pipeline-control is-step" onClick={handleNext}><SkipForward size={15} />单步推进</button><span>{isPlaying ? '自动推进中' : '已暂停'} · Esc 暂停 · ArrowRight 单步</span></div>}
+      </section>
+      <div className="pipeline-workspace">
+        <main className="pipeline-main-stage panel-shell">
+          <div className="pipeline-main-head"><div><div className="wb-pane-label">OBSERVABLE EXECUTION</div><strong>阶段主工作区</strong></div><Badge variant={stage === 'finished' ? 'emerald' : isRunning ? 'cyan' : 'slate'}>{STAGES[stageIndex]?.label}</Badge></div>
+          <div className={`pipeline-inline-requestbar ${stage === 'idle' ? 'is-idle' : ''}`}>
+            {stage !== 'idle' && <div className="pipeline-inline-request">
+              <BookOpen size={15} />
+              <span><small>当前请求</small><strong>{selectedCase?.label || '尚未选择案例'}</strong></span>
+              <p>{selectedCase?.question || '请从下方精选案例中选择要观察的问题。'}</p>
+            </div>}
+            <div className="pipeline-inline-batch">
+              <div><Layers2 size={14} /><span>Batch 模式</span></div>
+              <div className="pipeline-inline-batch-options">{BATCH_CONFIG.map((item) => <button key={item.key} type="button" className={batchSize === item.key ? 'is-active' : ''} onClick={() => setBatchSize(item.key)} title={item.desc}><b>{item.label}</b><small>{item.desc}</small></button>)}</div>
             </div>
-          )}
-          {stage === 'finished' && (
-            <button onClick={handleReset} className="flex w-full items-center justify-center gap-2 rounded-xl border border-space-600 bg-space-800/60 px-4 py-2.5 text-sm text-space-300 transition-all hover:border-cyan-500/30 hover:text-cyan-300">
-              <RotateCcw size={14} /> 重新开始
-            </button>
-          )}
-        </div>
+          </div>
+          <div className="pipeline-animation-surface"><AnimatePresence mode="wait">
+            {stage === 'idle' && (
+              <motion.div key="idle" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="pipeline-idle-state">
+                <div className="pipeline-idle-guide">
+                  <div className="pipeline-idle-mark"><Sparkles size={28} /></div>
+                  <div>
+                    <div className="wb-pane-label">开始一次可观察推理</div>
+                    <h2>{selectedCase ? '请求已就绪' : '先选择一个案例'}</h2>
+                    <p>{selectedCase ? '确认问题与 Batch 配置后开始。动画会从“分词”阶段自动播放，也可以随时暂停或单步推进。' : '从一个生活化问题开始，平台会带你观察它背后的分词、Prefill、KV Cache 决策与 Decode 技术机制。'}</p>
+                  </div>
+                </div>
+                <div className="pipeline-idle-steps" aria-label="开始推理的三个步骤">
+                  <div className={selectedCase ? 'is-done' : 'is-current'}><span>01</span><b>选择案例</b><small>{selectedCase ? selectedCase.label : '选择要观察的问题'}</small></div>
+                  <div className="is-current"><span>02</span><b>确认 Batch</b><small>当前 Batch-{batchSize}</small></div>
+                  <div><span>03</span><b>开始并观察</b><small>自动播放，可随时暂停</small></div>
+                </div>
+                {!selectedCase ? (
+                  <div className="pipeline-idle-case-grid">
+                    {CASES.map((item) => <button key={item.id} type="button" onClick={() => handleSelectCase(item)}><BookOpen size={15} /><span><b>{item.label}</b><small>{item.question}</small></span><ArrowRight size={13} /></button>)}
+                  </div>
+                ) : (
+                  <div className="pipeline-idle-selection">
+                    <div><span>当前请求确认</span><strong>{selectedCase.label}</strong><p>{selectedCase.question}</p><button type="button" className="pipeline-idle-change-case" onClick={() => setSelectedCase(null)}>更换案例</button></div>
+                    <div className="pipeline-idle-selection-meta"><Layers2 size={15} /><span>Batch-{batchSize}</span><small>{BATCH_CONFIG.find((item) => item.key === batchSize)?.desc}</small></div>
+                  </div>
+                )}
+                <button type="button" onClick={handleStart} disabled={!selectedCase} className="pipeline-idle-start"><Play size={16} />{selectedCase ? '开始推理' : '选择案例后即可开始'}</button>
+                <div className="pipeline-idle-sequence">{STAGES.map((item) => <span key={item.key}>{item.label}</span>)}</div>
+              </motion.div>
+            )}
+            {stage === 'tokenizing' && <TokenizingView tokens={tokens} isPlaying={isPlaying} />}
+            {stage === 'prefill' && <PrefillView ref={prefillRef} tokens={tokens} isPlaying={isPlaying} onComplete={handlePrefillComplete} />}
+            {stage === 'branch' && <motion.div key="branch" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="pipeline-branch-state"><Badge variant="amber">决策点</Badge><h2>是否启用 KV Cache？</h2><p>KV Cache 复用历史 Token 的 K/V 表示，减少对历史部分的重复计算，但会增加持久缓存容量。</p><div className="pipeline-branch-actions"><button onClick={() => handleBranch(true)}><Zap size={18} /><b>启用 KV Cache</b><span>复用历史 K/V，增加缓存容量</span></button><button onClick={() => handleBranch(false)}><AlertCircle size={18} /><b>禁用 KV Cache</b><span>重算历史状态，不保留持久 K/V</span></button></div></motion.div>}
+            {(stage === 'decoding' || stage === 'finished') && <DecodeView key="decode" tokens={tokens} outputTokens={outputTokens} revealedCount={revealedCount} useCache={useCache} stage={stage} />}
+          </AnimatePresence></div>
+        </main>
+        <aside className="pipeline-inspector panel-shell">
+          <div className="pipeline-inspector-head"><div><div className="wb-pane-label">STAGE INSPECTOR</div><strong>结构状态</strong></div><Gauge size={17} /></div>
+          <div className="pipeline-inspector-body"><div className="pipeline-state-row"><span>当前阶段</span><b>{STAGES[stageIndex]?.label}</b></div><div className="pipeline-state-row"><span>输入 Token 数</span><b>{tokens.length || '—'}</b></div><div className="pipeline-state-row"><span>Batch</span><b>{batchSize}</b></div>{selectedCase && <div className="pipeline-inspector-note"><div className="wb-pane-label">当前问题</div><p>{selectedCase.question}</p></div>}{stats && (stage === 'decoding' || stage === 'finished') && <><div className="pipeline-inspector-divider" /><div className="wb-pane-label">结构计数</div><StatRow icon={Layers2} label="Prefill 输入片段" value={`${stats.prefillTokens}`} /><StatRow icon={ChevronRight} label="Decode 生成步数" value={`${stats.decodeSteps}`} /><StatRow icon={Gauge} label="相对历史处理量" value={`${stats.relativeDecodeWork}`} /><StatRow icon={Database} label="缓存 K/V 向量组" value={`${stats.cachedVectors}`} /><Badge variant={useCache ? 'emerald' : 'slate'}>{useCache ? '复用历史 K/V' : '重算历史状态'}</Badge></>}{altStats && stage === 'finished' && <div className="pipeline-compare-note"><div>另一分支处理量 <b>{altStats.relativeDecodeWork}</b></div><div>另一分支缓存向量组 <b>{altStats.cachedVectors}</b></div></div>}{stage === 'finished' && <button onClick={handleReset} className="pipeline-reset-button"><RotateCcw size={14} />重新开始</button>}</div>
+        </aside>
       </div>
     </div>
   );

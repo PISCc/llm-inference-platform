@@ -16,6 +16,18 @@ pnpm-debug.log*
 # Test and coverage output
 coverage/
 
+# Generated builds and visual review artifacts
+dist/
+dist-variants/
+artifacts/
+design-previews/
+formal-redesign-screens/
+work/
+/formal-*.png
+
+# Local duplicate workspace created during preview work
+/llm-inference-platform/
+
 # Temporary browser and editor files
 .browser-*
 browser-*
@@ -29,5 +41,12 @@ Thumbs.db
 # Backups are stored outside the repository
 backups/
 
+# Internal handoff records with machine-specific paths
+docs/网页改版交接方案.md
+docs/网页改版执行总结-*.md
+
 # Tunnel binary kept outside version control
 tools/
+
+# Vercel local project metadata
+.vercel/

@@ -7,6 +7,7 @@ import Lab from './pages/Lab.jsx'
 import Compare from './pages/Compare.jsx'
 import Diagnosis from './pages/Diagnosis.jsx'
 import Agent from './pages/Agent.jsx'
+import HardwareCalculatorPage from './pages/HardwareCalculatorPage.jsx'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/pipeline" element={<Pipeline />} />
         <Route path="/lab" element={<Lab />} />
         <Route path="/compare" element={<Compare />} />
+        <Route path="/hardware" element={<HardwareCalculatorPage />} />
         <Route path="/diagnosis" element={<Diagnosis />} />
         <Route path="/detective" element={<Navigate to="/diagnosis" replace />} />
         <Route path="/agent" element={<Agent />} />

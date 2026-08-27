@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llm-inference-lab.local/schemas/presentation-spec-v1.json",
+  "title": "PresentationSpec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "meta", "slides"],
+  "properties": {
+    "version": { "const": "1.0" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "audience", "durationMinutes", "theme", "sourceType"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "subtitle": { "type": "string", "maxLength": 120 },
+        "audience": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "durationMinutes": { "type": "integer", "minimum": 3, "maximum": 60 },
+        "theme": { "enum": ["platform-light", "executive-dark", "paper"] },
+        "sourceType": { "enum": ["answer", "page", "comparison", "diagnosis"] }
+      }
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "title", "takeaway", "bullets", "sources"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "type": { "enum": ["title", "key-message", "process", "comparison", "diagnosis", "summary"] },
+          "title": { "type": "string", "minLength": 1, "maxLength": 52 },
+          "takeaway": { "type": "string", "maxLength": 140 },
+          "bullets": {
+            "type": "array",
+            "maxItems": 5,
+            "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+          },
+          "notes": {
+            "type": "array",
+            "maxItems": 6,
+            "items": { "type": "string", "maxLength": 240 }
+          },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1, "maxLength": 100 },
+                "url": { "type": "string", "maxLength": 500 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

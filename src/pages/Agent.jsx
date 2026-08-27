@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -12,6 +12,8 @@ import {
   Cpu,
   Database,
   Gauge,
+  HardDrive,
+  FileSliders,
   Layers3,
   Lightbulb,
   Link2,
@@ -19,6 +21,7 @@ import {
   MessageSquareText,
   Network,
   Send,
+  Settings2,
   Sparkles,
   Workflow,
   X,
@@ -27,17 +30,21 @@ import Badge from '../components/Badge.jsx';
 import ProductHeader from '../components/ProductHeader.jsx';
 import GlowCard from '../components/GlowCard.jsx';
 import knowledge from '../data/knowledge.json';
+import { useAgentSession } from '../context/AgentSessionContext.jsx';
+import { usePptExport } from '../context/PptExportContext.jsx';
+import { useModelConfig } from '../context/ModelConfigContext.jsx';
+import AnswerContent from '../modules/agent/AnswerContent.jsx';
+import { clean, normalize, scoreEntry } from '../modules/agent/knowledgeSearch.js';
 
-const normalize = (value) => String(value || '')
-  .toLowerCase()
-  .replace(/[\s`*_#\[\]（）()：:，,。.!！?？、/\\|\-]+/g, '');
-
-const clean = (value) => String(value || '')
-  .replace(/```(?:text)?/gi, '')
-  .replace(/```/g, '')
-  .replace(/\[\[([^\]]+)\]\]/g, '$1')
-  .replace(/^#{1,6}\s+/gm, '')
-  .trim();
+const uniqueBy = (items = [], getKey) => {
+  const seen = new Set();
+  return items.filter((item, index) => {
+    const key = String(getKey(item, index) || `item-${index}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 const ALL_ENTRIES = knowledge.entries;
 const SEARCH_ENTRIES = ALL_ENTRIES.filter(
@@ -66,18 +73,6 @@ const PRESETS = [
   ['FlashAttention 会改变模型结果吗？', 'flashattention', '架构', Sparkles, 'emerald'],
 ];
 
-const HINTS = {
-  'kv cache': ['kv-cache'], kv缓存: ['kv-cache'], 缓存: ['kv-cache', 'prefix-cache', 'pagedattention', 'memory-manager'],
-  prefill: ['prefill-与-decode', 'chunked-prefill', 'pd-分离'], decode: ['prefill-与-decode', '自回归生成', 'speculative-decoding'],
-  ttft: ['性能指标', 'prefill-与-decode'], tpot: ['性能指标', 'prefill-与-decode'], 延迟: ['性能指标', 'prefill-与-decode'], 吞吐: ['性能指标', 'batching-与-continuous-batching'],
-  batching: ['batching-与-continuous-batching'], batch: ['batching-与-continuous-batching'], 连续批处理: ['batching-与-continuous-batching'],
-  mha: ['mhamqagqa'], mqa: ['mhamqagqa'], gqa: ['mhamqagqa'], attention: ['attention-机制', 'mhamqagqa', 'flashattention'], 注意力: ['attention-机制', 'mhamqagqa', 'flashattention'],
-  moe: ['moe'], 专家: ['moe', 'expert', 'router-与-top-k-routing'], 量化: ['量化', '数据格式与精度', 'gptq-与-awq'], int8: ['量化', '数据格式与精度'], int4: ['量化', '数据格式与精度'],
-  prefix: ['prefix-cache'], 前缀: ['prefix-cache'], cuda: ['cuda-graph'], graph: ['cuda-graph'], oom: ['memory-manager', 'pagedattention', '显存与带宽'], 显存: ['显存与带宽', 'memory-manager', 'kv-cache', 'pagedattention'],
-  碎片: ['block-table-与显存碎片', 'pagedattention', 'memory-manager'], pagedattention: ['pagedattention'], flashattention: ['flashattention'], 投机解码: ['speculative-decoding'], speculative: ['speculative-decoding'],
-  token: ['token-与-token-id', 'tokenizer', '自回归生成'], tokenizer: ['tokenizer'], 调度: ['scheduler', '请求准入抢占重排与负载均衡'], 并行: ['并行方式总览', 'tpppdp', 'epcpsp'],
-};
-
 const LINKS = {
   'kv-cache': [['打开 KV Cache 全景模块', '/panorama', { moduleId: 'kv' }, 'cyan'], ['查看推理流水线', '/pipeline', null, 'violet'], ['计算缓存容量', '/lab', { tab: 'kv' }, 'emerald']],
   'prefill-与-decode': [['观察完整推理流程', '/pipeline', null, 'violet'], ['打开两阶段推理模块', '/panorama', { moduleId: 'prefill_decode' }, 'cyan']],
@@ -90,13 +85,12 @@ const LINKS = {
   'batching-与-continuous-batching': [['对比调度与组批策略', '/compare', { tab: 'scheduling' }, 'amber'], ['打开连续批处理模块', '/panorama', { moduleId: 'cb' }, 'cyan'], ['诊断吞吐问题', '/diagnosis', null, 'emerald']],
   'prefix-cache': [['打开前缀缓存模块', '/panorama', { moduleId: 'prefix' }, 'cyan'], ['观察 Prefill 过程', '/pipeline', null, 'violet']],
   'cuda-graph': [['打开 CUDA Graph 模块', '/panorama', { moduleId: 'cudagraph' }, 'cyan'], ['诊断启动与执行开销', '/diagnosis', null, 'emerald']],
-  'memory-manager': [['打开显存管理模块', '/panorama', { moduleId: 'mm' }, 'cyan'], ['诊断显存 OOM', '/diagnosis', null, 'emerald'], ['计算显存容量', '/lab', { tab: 'kv' }, 'violet']],
+  'memory-manager': [['打开显存管理模块', '/panorama', { moduleId: 'mm' }, 'cyan'], ['诊断显存 OOM', '/diagnosis', null, 'emerald'], ['计算显存与硬件容量', '/hardware', null, 'violet']],
   pagedattention: [['打开 PagedAttention 模块', '/panorama', { moduleId: 'paged' }, 'cyan'], ['诊断显存 OOM', '/diagnosis', null, 'emerald']],
   flashattention: [['打开 FlashAttention 模块', '/panorama', { moduleId: 'flash' }, 'cyan'], ['打开 Attention 参数实验', '/lab', { tab: 'attn' }, 'emerald']],
 };
 
 const FALLBACK_IDS = ['推理系统总览', 'prefill-与-decode', 'kv-cache', 'attention-机制', 'moe', '量化'];
-
 const toneClasses = (tone) => ({
   cyan: 'border-cyan-500/25 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20',
   violet: 'border-violet-500/25 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20',
@@ -104,68 +98,14 @@ const toneClasses = (tone) => ({
   amber: 'border-amber-500/25 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20',
 }[tone] || 'border-space-700/60 bg-space-900/60 text-space-300 hover:bg-space-800/70');
 
-const entryCorpus = (entry) => [
-  entry.id,
-  entry.title,
-  entry.summary,
-  entry.definition,
-  entry.problem,
-  ...(entry.aliases || []),
-  ...(entry.tags || []),
-  ...(entry.related || []),
-  ...Object.keys(entry.sections || {}),
-  ...Object.values(entry.sections || {}),
-].join(' ');
-
-function scoreEntry(entry, rawQuery) {
-  const query = normalize(rawQuery);
-  const rawLower = String(rawQuery || '').toLowerCase();
-  const title = normalize(entry.title);
-  const id = normalize(entry.id);
-  const corpus = normalize(entryCorpus(entry));
-  let score = 0;
-
-  if (query && (query.includes(title) || query.includes(id) || title.includes(query) || id.includes(query))) {
-    score += 100;
-  }
-
-  for (const alias of entry.aliases || []) {
-    const aliasKey = normalize(alias);
-    if (aliasKey.length >= 2 && query.includes(aliasKey)) score += 72;
-  }
-
-  for (const [term, ids] of Object.entries(HINTS)) {
-    const termKey = normalize(term);
-    if (termKey.length >= 2 && query.includes(termKey) && ids.includes(entry.id)) {
-      score += Math.max(24, 52 - ids.indexOf(entry.id) * 8);
-    }
-  }
-
-  const titleParts = [entry.title, ...(entry.aliases || []), ...(entry.tags || [])]
-    .flatMap((value) => String(value).toLowerCase().split(/[\s、，,/与和及]+/))
-    .map(normalize)
-    .filter((part) => part.length >= 2);
-
-  for (const part of titleParts) {
-    if (query.includes(part)) score += 20;
-  }
-
-  const englishTokens = rawLower.match(/[a-z][a-z0-9-]{1,}/g) || [];
-  for (const token of englishTokens) {
-    if (corpus.includes(normalize(token))) score += 10;
-  }
-
-  return score >= 20 ? { entry, score } : null;
-}
-
 export function retrieve(query, forcedId = null) {
   if (forcedId && ENTRY_BY_ID.has(forcedId)) {
     return { direct: true, matches: [{ entry: ENTRY_BY_ID.get(forcedId), score: 1000 }] };
   }
 
   const ranked = SEARCH_ENTRIES
-    .map((entry) => scoreEntry(entry, query))
-    .filter(Boolean)
+    .map((entry) => ({ entry, score: scoreEntry(entry, query) }))
+    .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.entry.title.localeCompare(b.entry.title, 'zh-CN'));
   const matches = ranked.slice(0, 4);
 
@@ -228,54 +168,31 @@ function Stat({ value, label, tone = 'cyan' }) {
     </div>
   );
 }
-
-function StructuredText({ text }) {
-  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
-  const isTable = lines.length >= 2
-    && lines.every((line) => line.startsWith('|'))
-    && /^\|?[\s:|-]+\|?$/.test(lines[1]);
-
-  if (isTable) {
-    const cells = (line) => line.replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim());
-    const headers = cells(lines[0]);
-    const rows = lines.slice(2).map(cells);
-    return (
-      <div className="mt-3 overflow-x-auto rounded-lg border border-space-700/50">
-        <table className="w-full min-w-[520px] border-collapse text-left text-xs">
-          <thead className="bg-space-900/85 text-space-300">
-            <tr>{headers.map((header) => <th key={header} className="border-b border-space-700/60 px-3 py-2.5 font-semibold">{header}</th>)}</tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-space-800/80 last:border-0">
-                {row.map((cell, cellIndex) => <td key={cellIndex} className="px-3 py-2.5 leading-5 text-space-400">{cell}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 space-y-2 text-sm leading-7 text-space-400">
-      {lines.map((line, index) => /^[-*]\s+/.test(line) ? (
-        <div key={index} className="flex items-start gap-2">
-          <span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400/70" />
-          <span>{line.replace(/^[-*]\s+/, '')}</span>
-        </div>
-      ) : <p key={index} className="whitespace-pre-wrap">{line}</p>)}
-    </div>
-  );
-}
-
 export default function Agent() {
   const navigate = useNavigate();
+  const {
+    turns,
+    activeTurn,
+    activeTurnId,
+    ask,
+    selectTurn,
+    clearActive,
+    clearConversation,
+  } = useAgentSession();
+  const { openPptExport } = usePptExport();
+  const { open: openModelConfig, status: modelStatus, loading: modelStatusLoading } = useModelConfig();
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
   const [forcedId, setForcedId] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [activeHistoryId, setActiveHistoryId] = useState(null);
+  const hydratedTurnRef = useRef(null);
+  const history = useMemo(() => [...turns].reverse().map((turn) => ({
+    ...turn,
+    title: turn.pageTitle || '自由提问',
+  })), [turns]);
+  const activeHistoryId = activeTurnId;
+  const onlineAnswer = activeTurn?.answer || '';
+  const onlineStatus = activeTurn?.status || 'idle';
+  const onlineMeta = activeTurn?.meta || null;
 
   const result = useMemo(
     () => (submitted ? retrieve(submitted, forcedId) : null),
@@ -285,6 +202,16 @@ export default function Agent() {
   const blocks = entry ? answerBlocks(entry) : [];
   const related = entry ? relatedEntries(entry) : [];
   const moduleLinks = entry ? (LINKS[entry.id] || []) : [];
+  const isLocalAnswer = onlineStatus === 'fallback' || onlineMeta?.mode === 'offline-fallback';
+  const useLocalResult = isLocalAnswer || (!onlineAnswer && ['idle', 'offline', 'error'].includes(onlineStatus));
+
+  useEffect(() => {
+    if (!activeTurn || hydratedTurnRef.current === activeTurn.id) return;
+    hydratedTurnRef.current = activeTurn.id;
+    setQuery(activeTurn.query);
+    setSubmitted(activeTurn.query);
+    setForcedId(null);
+  }, [activeTurn]);
 
   const submit = (nextQuery = query, nextForcedId = forcedId) => {
     const value = String(nextQuery || '').trim();
@@ -292,14 +219,7 @@ export default function Agent() {
     setQuery(value);
     setSubmitted(value);
     setForcedId(nextForcedId);
-    setActiveHistoryId(null);
-    setHistory((items) => [{
-      id: Date.now(),
-      query: value,
-      forcedId: nextForcedId,
-      title: nextForcedId ? ENTRY_BY_ID.get(nextForcedId)?.title : '自由提问',
-      createdAt: Date.now(),
-    }, ...items.filter((item) => item.query !== value || item.forcedId !== nextForcedId)].slice(0, 8));
+    ask(value);
   };
 
   const openPreset = (preset) => submit(preset[0], preset[1]);
@@ -307,29 +227,50 @@ export default function Agent() {
     setQuery(item.query);
     setSubmitted(item.query);
     setForcedId(item.forcedId);
-    setActiveHistoryId(item.id);
+    selectTurn(item.id);
   };
   const clearHistory = () => {
-    setHistory([]);
-    setActiveHistoryId(null);
+    clearConversation();
+    setSubmitted('');
+    setQuery('');
+    setForcedId(null);
   };
   const openEntry = (nextEntry) => submit(`什么是${nextEntry.title}？`, nextEntry.id);
   const openLink = ([, path, state]) => navigate(path, state ? { state } : undefined);
+  const modelStatusTitle = modelStatusLoading
+    ? '正在读取模型配置'
+    : modelStatus.configured
+      ? `${modelStatus.source === 'session' ? '会话模型' : '部署默认'}：${modelStatus.model}`
+      : '当前使用本地知识降级';
+  const modelStatusDetail = modelStatus.configured
+    ? `${modelStatus.provider === 'openai-compatible' ? 'OpenAI 兼容接口' : modelStatus.provider === 'vllm-local' ? '本地 vLLM' : modelStatus.provider || '兼容接口'} · ${modelStatus.baseUrl || ''}`
+    : '填写 API Key、服务地址和模型名称即可启用在线回答。';
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="agent-workbench space-y-5 pb-10">
       <ProductHeader
         title="AI 技术问答"
-        subtitle="输入你关心的技术问题，获得清晰的技术说明，并可前往相关模块继续探索。"
+        subtitle="询问推理概念、指标、阶段与方案，并跳转到相关模块。"
         accent="violet"
         badges={[
           { label: '离线可用', variant: 'emerald' },
-          { label: '简洁解释技术概念', variant: 'slate' },
-          { label: '支持模块联动', variant: 'slate' },
+          { label: '模块联动', variant: 'slate' },
         ]}
       />
 
-      <div className="rounded-2xl border border-space-700/50 bg-space-900/55 p-4 md:p-5">
+      <div className="agent-task-workspace">
+        <aside className="agent-source-rail">
+      <div className="agent-statusbar">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${modelStatus.configured ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.45)]' : 'bg-space-600'}`} />
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-space-300">{modelStatusTitle}</div>
+            <div className="mt-0.5 truncate text-[10px] text-space-600">{modelStatusDetail}</div>
+          </div>
+        </div>
+        <button type="button" onClick={openModelConfig} className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/25 bg-cyan-500/[0.08] px-3 py-2 text-xs font-medium text-cyan-600 transition hover:bg-cyan-500/[0.14]"><Settings2 size={14} />配置模型</button>
+      </div>
+      <div className="agent-intro-strip">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-500/15 text-violet-300">
@@ -337,11 +278,11 @@ export default function Agent() {
             </div>
             <div>
               <div className="text-sm font-semibold text-space-200">智能技术问答</div>
-              <div className="mt-1 text-xs text-space-500">问题 → 解释 → 继续探索</div>
+              <div className="mt-1 text-xs text-space-500">问题 → 回答 → 探索</div>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 md:w-[min(100%,360px)]">
-            {['提出问题', '查看解释', '继续探索'].map((label, index) => (
+            {['提问', '回答', '探索'].map((label, index) => (
               <div key={label} className="rounded-xl border border-space-700/55 bg-space-950/45 px-2 py-2.5 text-center">
                 <div className="text-[10px] font-semibold text-violet-300">0{index + 1}</div>
                 <div className="mt-1 text-[10px] text-space-500">{label}</div>
@@ -351,14 +292,19 @@ export default function Agent() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="agent-context-stats">
         <Stat value={SEARCH_ENTRIES.length} label="技术主题" tone="cyan" />
         <Stat value={PRESETS.length} label="快捷问题" tone="violet" />
-        <Stat value="5" label="可联动模块" tone="emerald" />
+        <Stat value="6" label="可联动模块" tone="emerald" />
       </div>
+      <button type="button" className="agent-hardware-entry" onClick={() => navigate('/hardware')}>
+        <span className="agent-hardware-entry__icon"><HardDrive size={17} /></span>
+        <span><strong>硬件容量计算器</strong><small>把权重、峰值缓存、智能体与图片存储换算成可运行搭配。</small></span>
+        <ArrowRight size={14} />
+      </button>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="space-y-5">
+        </aside>
+        <main className="agent-conversation">
           <GlowCard className="p-5" accent="violet">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -366,7 +312,7 @@ export default function Agent() {
                   <MessageSquareText size={17} className="text-violet-300" />
                   提出技术问题
                 </div>
-                <p className="mt-1 text-xs text-space-500">建议包含具体术语、指标或推理阶段，便于获得更准确的解释。</p>
+                <p className="mt-1 text-xs text-space-500">输入术语、指标或推理阶段。</p>
               </div>
               <Badge variant="slate">{query.length}/200</Badge>
             </div>
@@ -437,7 +383,102 @@ export default function Agent() {
               </motion.section>
             )}
 
-            {submitted && result?.direct && entry && (
+            {submitted && ['connecting', 'streaming'].includes(onlineStatus) && !onlineAnswer && (
+              <motion.section
+                key={`online-loading-${submitted}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl border border-violet-500/20 bg-space-900/65 p-6"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-violet-300">
+                    <Bot size={19} className="animate-pulse" />
+                  </span>
+                  <div>
+                    <div className="text-sm font-semibold text-space-200">正在生成回答…</div>
+                  </div>
+                </div>
+              </motion.section>
+            )}
+
+            {submitted && onlineAnswer && onlineMeta?.mode !== 'offline-fallback' && (
+              <motion.article
+                key={`online-${submitted}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="overflow-hidden rounded-2xl border border-violet-500/25 bg-gradient-to-br from-space-900/90 to-space-950/75"
+              >
+                <header className="border-b border-space-700/50 p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={onlineMeta?.mode === 'model' ? 'violet' : 'amber'}>
+                        {onlineMeta?.mode === 'model' ? '大模型回答' : '本地知识回答'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => openPptExport({
+                          title: submitted,
+                          answer: onlineAnswer,
+                          sources: onlineMeta?.sources || [],
+                        })}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/25 bg-violet-500/[0.08] px-2.5 py-1.5 text-xs text-violet-500 transition hover:bg-violet-500/[0.14]"
+                      >
+                        <FileSliders size={14} />生成 PPT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmitted('');
+                          setQuery('');
+                          setForcedId(null);
+                          clearActive();
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs text-space-600 transition hover:text-space-300"
+                      >
+                        <X size={14} />清除回答
+                      </button>
+                    </div>
+                  </div>
+                  <h2 className="mt-4 text-xl font-semibold tracking-tight text-space-100">{submitted}</h2>
+                  {onlineMeta?.model?.model && (
+                    <p className="mt-2 text-[11px] text-space-600">模型：{onlineMeta.model.model}</p>
+                  )}
+                </header>
+
+                <div className="space-y-4 p-6">
+                  <section className="rounded-xl border border-space-700/50 bg-space-950/35 p-4">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-space-300">
+                      <MessageSquareText size={14} className="text-violet-300" />回答
+                    </div>
+                    <AnswerContent text={onlineAnswer} className="mt-3" />
+                  </section>
+
+                  {(onlineMeta?.relatedActions || []).length > 0 && (
+                    <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
+                        <ArrowUpRight size={14} />继续探索
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {uniqueBy(onlineMeta.relatedActions, (action) => `${action.path}-${action.label}`).map((action, index) => (
+                          <button
+                            key={`${action.path}-${action.label}-${index}`}
+                            type="button"
+                            onClick={() => navigate(action.path, action.state ? { state: action.state } : undefined)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition hover:bg-emerald-500/20"
+                          >
+                            {action.label}<ArrowRight size={13} />
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </div>
+              </motion.article>
+            )}
+
+            {submitted && useLocalResult && result?.direct && entry && (
               <motion.article
                 key={`${submitted}-${entry.id}`}
                 initial={{ opacity: 0, y: 8 }}
@@ -466,7 +507,7 @@ export default function Agent() {
                         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-cyan-500/10 text-[10px] text-cyan-300">{index + 1}</span>
                         {block.label}
                       </div>
-                      <StructuredText text={block.text} />
+                      <AnswerContent text={block.text} className="mt-3" />
                     </section>
                   ))}
 
@@ -494,7 +535,6 @@ export default function Agent() {
                     <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
                       <ArrowUpRight size={14} />继续探索
                     </div>
-                    <p className="mt-2 text-xs leading-6 text-space-500">你可以通过相关主题或下方模块入口继续查看这项技术。</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {moduleLinks.map((link) => (
                         <button
@@ -519,7 +559,7 @@ export default function Agent() {
               </motion.article>
             )}
 
-            {submitted && result && !result.direct && (
+            {submitted && useLocalResult && result && !result.direct && (
               <motion.section
                 key={`fallback-${submitted}`}
                 initial={{ opacity: 0, y: 8 }}
@@ -532,9 +572,9 @@ export default function Agent() {
                       <CircleHelp size={19} />
                     </span>
                     <div>
-                      <Badge variant="amber">暂未找到直接解释</Badge>
-                      <h2 className="mt-3 text-xl font-semibold text-space-100">换个方式继续探索</h2>
-                      <p className="mt-2 text-sm leading-7 text-space-500">暂时没有找到与“{submitted}”完全对应的主题。你可以从下面的相关主题开始查看，或调整问题中的技术术语。</p>
+                      <Badge variant="amber">暂无匹配结果</Badge>
+                      <h2 className="mt-3 text-xl font-semibold text-space-100">试试相关主题</h2>
+                      <p className="mt-2 text-sm leading-7 text-space-500">可选择相关主题，或调整问题中的技术术语。</p>
                     </div>
                   </div>
 
@@ -578,7 +618,7 @@ export default function Agent() {
           </AnimatePresence>
         </main>
 
-        <aside className="space-y-4">
+        <aside className="agent-context-inspector">
           <GlowCard className="p-5" accent="cyan">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-space-200">
@@ -609,12 +649,12 @@ export default function Agent() {
             <div className="flex items-center gap-2 text-sm font-semibold text-space-200">
               <Sparkles size={16} className="text-emerald-400" />推荐探索
             </div>
-            <p className="mt-3 text-xs leading-6 text-space-500">从完整流程、参数变化、方案对比和性能诊断四个方向继续理解大模型推理。</p>
             <div className="mt-4 grid grid-cols-2 gap-2">
               {[
                 ['流水线', '/pipeline'],
                 ['参数实验', '/lab'],
                 ['方案对比', '/compare'],
+                ['硬件计算器', '/hardware'],
                 ['链路诊断', '/diagnosis'],
               ].map(([label, path]) => (
                 <button
@@ -664,3 +704,4 @@ export default function Agent() {
     </div>
   );
 }
+

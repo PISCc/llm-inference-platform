@@ -8,7 +8,7 @@ import GlowCard from '../../components/GlowCard.jsx';
 import Badge from '../../components/Badge.jsx';
 import {
   SliderControl, MetricCard,
-  calcKVCache, ARCHITECTURES, ATTENTION_KERNELS, getArchitectureKVHeads
+  calcKVCache, ARCHITECTURES, ATTENTION_KERNELS, resolveKVHeads
 } from './common.jsx';
 
 export default function AttentionPanel({ params, setParams, calcResult, baselineCalc }) {
@@ -16,10 +16,21 @@ export default function AttentionPanel({ params, setParams, calcResult, baseline
   const kernel = ATTENTION_KERNELS[params.attentionKernel];
 
   const compareData = useMemo(() => archList.map(([key, arch]) => {
+    let kvHeads;
+    if (ARCHITECTURES[key]?.kvMode === 'latent') {
+      kvHeads = null;
+    } else if (key === 'MHA') {
+      kvHeads = params.numHeads;
+    } else if (key === 'MQA') {
+      kvHeads = 1;
+    } else {
+      // GQA：优先保留当前模型的权威参考头数，否则按 Q 头数的 1/4 推导。
+      kvHeads = resolveKVHeads('GQA', params.numHeads, params.gqaKVHeads);
+    }
     const archCalc = calcKVCache({
       ...params,
       architecture: key,
-      numKVHeads: getArchitectureKVHeads(key, params.numHeads),
+      numKVHeads: kvHeads,
     });
     return {
       key,
@@ -42,7 +53,7 @@ export default function AttentionPanel({ params, setParams, calcResult, baseline
     setParams((current) => ({
       ...current,
       architecture: key,
-      numKVHeads: getArchitectureKVHeads(key, current.numHeads) ?? current.numKVHeads,
+      numKVHeads: resolveKVHeads(key, current.numHeads, current.gqaKVHeads) ?? current.numKVHeads,
       parameterCountB: null,
       referenceName: null,
     }));
@@ -114,10 +125,10 @@ export default function AttentionPanel({ params, setParams, calcResult, baseline
             <div className="mt-4 min-h-0 flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={compareData} layout="vertical" margin={{ top: 8, right: 28, bottom: 10, left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#64748b', fontSize: 10 }} label={{ value: 'GiB', position: 'insideBottom', fill: '#64748b', fontSize: 10, offset: -4 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#cbd5e1', fontSize: 11 }} width={54} />
-                  <ReTooltip contentStyle={{ background: '#07101f', border: '1px solid #334155', borderRadius: 12, fontSize: 12 }} formatter={(value) => [`${Number(value).toFixed(3)} GiB`, 'KV Cache']} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ded7ca" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#777066', fontSize: 10 }} label={{ value: 'GiB', position: 'insideBottom', fill: '#777066', fontSize: 10, offset: -4 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#504b43', fontSize: 11 }} width={54} />
+                  <ReTooltip contentStyle={{ background: '#fbf8f2', border: '1px solid #ded7ca', borderRadius: 12, color: '#2b2925', fontSize: 12 }} formatter={(value) => [`${Number(value).toFixed(3)} GiB`, 'KV Cache']} />
                   <Bar dataKey="kvGiB" radius={[0, 6, 6, 0]} barSize={24}>
                     {compareData.map((entry) => <Cell key={entry.key} fill={entry.color} fillOpacity={entry.key === params.architecture ? 1 : 0.58} />)}
                   </Bar>
@@ -147,23 +158,22 @@ export default function AttentionPanel({ params, setParams, calcResult, baseline
           <div className="mt-4 flex flex-wrap gap-2"><Badge variant="cyan">{arch.name}</Badge><Badge variant="violet">{kernel.name}</Badge></div>
           <p className="mt-3 text-xs leading-relaxed text-space-500">{arch.desc}</p>
           <div className="mt-4 space-y-2">
-            <MetricCard label="KV Cache" value={calcResult.kvCacheGB} unit="GiB" prevValue={baselineCalc.kvCacheGB} accent="cyan" />
+            <MetricCard label="KV Cache" value={calcResult.kvCacheGB} unit="GiB" prevValue={baselineCalc.kvCacheGB} accent="cyan" lowerIsBetter />
             <MetricCard label="相对 MHA 容量" value={calcResult.kvMemoryRatio} unit="×" accent={calcResult.kvMemoryRatio < 1 ? 'emerald' : 'slate'} digits={3} />
             <MetricCard label="缓存结构" value={currentStructure} unit="" accent="violet" />
           </div>
         </GlowCard>
 
         <GlowCard accent="slate" className="panel-shell p-4">
-          <h4 className="text-xs font-semibold text-space-300">实现边界</h4>
+          <h4 className="text-xs font-semibold text-space-300">结构关系</h4>
           <div className="mt-3 space-y-2 text-[11px] leading-relaxed text-space-500">
             <div className="flex items-start gap-1.5"><ChevronRight size={11} className="mt-0.5 shrink-0 text-cyan-400" /><span>架构决定持久 K/V 的组织方式；FlashAttention 属于计算实现优化。</span></div>
             <div className="flex items-start gap-1.5"><ChevronRight size={11} className="mt-0.5 shrink-0 text-cyan-400" /><span>FlashAttention 不改变本页的持久 KV Cache 容量。</span></div>
-            <div className="flex items-start gap-1.5"><ChevronRight size={11} className="mt-0.5 shrink-0 text-cyan-400" /><span>速度、临时显存和模型质量不展示固定倍率，必须在指定模型、硬件和算子版本上测量。</span></div>
           </div>
         </GlowCard>
 
         <GlowCard accent="slate" className="panel-shell p-4">
-          <h4 className="text-xs font-semibold text-space-300">公式口径</h4>
+          <h4 className="text-xs font-semibold text-space-300">计算公式</h4>
           <div className="mt-3 space-y-2 text-[10px] leading-relaxed text-space-500">
             <div className="formula-chip">MHA/GQA/MQA = 2 × L × Hkv × dh × S × B × bytes</div>
             <div className="formula-chip">MLA = L × S × B × (dlatent + drope) × bytes</div>
