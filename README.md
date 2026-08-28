@@ -1,6 +1,6 @@
 # LLM 推理工作台
 
-面向大模型推理系统的交互式技术工作台，集成技术全景图、推理流程动画、参数实验、方案对比、硬件容量规划、证据驱动诊断、上下文 AI 问答与 PPT 导出。当前成品版本为 **v6**，包含 7 个互动产品模块，并支持单文件离线浏览。
+面向大模型推理系统的交互式技术工作台，集成技术全景图、推理流程动画、参数实验、方案对比、硬件容量规划、证据驱动诊断、上下文 AI 问答与 PPT 导出。当前成品包含 7 个互动产品模块，并支持单文件离线浏览。
 
 在线演示：[https://llm-inference-platform-pisc2.vercel.app](https://llm-inference-platform-pisc2.vercel.app)
 
@@ -255,7 +255,7 @@ dist/index.html
 因此 `dist/index.html` 是包含主要脚本和样式的单文件构建，可以直接打开使用离线页面功能；需要在线 AI 问答时，
 先运行 `npm start` 启动本地 API（见上文「直接打开 `dist/index.html`（file://）时接入 API」）。
 
-仓库同时保留独立的 `dist/hardware-calculator-mvp.html`，用于不启动 React 工作台时快速验证硬件计算器的输入输出；正式工作台入口为 `dist/index.html`。当前成品版本文件为 `dist/llm-inference-platform-v6.html`，可在构建后将 `dist/index.html` 复制为该文件名查看。仓库中的 `panorama-v5` 命名属于全景图内容模块的内部版本标识，不代表整站版本。
+仓库同时保留独立的 `dist/hardware-calculator-mvp.html`，用于不启动 React 工作台时快速验证硬件计算器的输入输出；正式工作台入口为 `dist/index.html`。
 
 ## 路由
 
